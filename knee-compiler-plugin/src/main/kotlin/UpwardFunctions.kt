@@ -55,7 +55,8 @@ private fun KneeUpwardFunction.makeCodegen(
     val spec = FunSpec
         .builder(signature.jniInfo.name(includeAncestors = false).asString())
         .addModifiers(KModifier.PRIVATE)
-        .addAnnotation(ClassName.bestGuess("kotlin.jvm.JvmStatic"))
+        // Only members in named objects and companion objects can be annotated with '@JvmStatic'.
+        // .addAnnotation(ClassName.bestGuess("kotlin.jvm.JvmStatic"))
         .returns((if (signature.isSuspend) signature.suspendResult else signature.result).encodedType.jvmOrNull?.name ?: UNIT)
 
     // Parameters
@@ -129,7 +130,7 @@ private fun KneeUpwardFunction.makeIr(context: KneeContext, signature: UpwardFun
         // but that copies type parameters too, fails for generics. We have concrete types.
         // Use the import susbstitution map instead, or TODO: use signature value parameters
         // copyValueParametersFrom(source, kind.importInfo?.substitutionMap ?: emptyMap())
-        
+
         parameters = source.parameters.map { sourceParam ->
             // Find the matching parameter and its resolved codec from the signature
             val codec = signature.regularParameters.find { it.first == sourceParam }?.second
