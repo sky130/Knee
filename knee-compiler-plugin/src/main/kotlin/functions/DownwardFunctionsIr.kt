@@ -4,6 +4,7 @@ import io.deepmedia.tools.knee.plugin.compiler.codec.IrCodecContext
 import io.deepmedia.tools.knee.plugin.compiler.functions.DownwardFunctionsIr.irInvoke
 import org.jetbrains.kotlin.ir.builders.*
 import org.jetbrains.kotlin.ir.declarations.IrFunction
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.util.fqNameWhenAvailable
@@ -37,9 +38,9 @@ object DownwardFunctionsIr {
                 with(codec) {
                     // note: targetIndex != index because of copy parameters!
                     val inputIndex = index + signature.knPrefixParameters.size + signature.extraParameters.size
-                    val targetIndex = local.valueParameters.indexOfFirst { it.name == param }
+                    val targetIndex = local.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }.indexOfFirst { it.name == param }
                     codecContext.logger.injectLog(this@irInvoke, "$logPrefix Decoding parameter $param with $codec")
-                    putValueArgument(targetIndex, irDecode(codecContext, inputs[inputIndex]))
+                    arguments[targetIndex] = irDecode(codecContext, inputs[inputIndex])
                 }
             }
             /* signature.knCopyParameters.forEach { (param, indexToBeCopied) ->

@@ -10,7 +10,6 @@ import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import kotlinx.serialization.json.Json
-import org.jetbrains.kotlin.ir.backend.js.utils.valueArguments
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.expressions.IrConst
 import org.jetbrains.kotlin.ir.util.functions
@@ -28,9 +27,10 @@ val IrClass.exportInfo: ExportInfo? get() {
         .first { it.name == ExportInfo.DeclarationNames.AnnotatedFunction }
         .annotations
         .single()
-        .valueArguments[0]
-        .let { it as IrConst<String> }
+        .arguments[0]
+        .let { it as IrConst }
         .value
+        .let { it as String }
         .let { Json.decodeFromString(it) }
 }
 

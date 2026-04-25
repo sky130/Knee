@@ -44,8 +44,8 @@ class GenericCodec(
         }
 
         fun irEncodeBoxed(type: String) = irCall(symbols.functions(encodeBoxed(type)).single()).apply {
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, data)
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = data
         }
 
         return when (wrappedType) {
@@ -62,8 +62,8 @@ class GenericCodec(
     override fun IrStatementsBuilder<*>.irDecode(irContext: IrCodecContext, jni: IrValueDeclaration): IrExpression {
 
         fun irDecodeBoxed(type: String) = irCall(symbols.functions(decodeBoxed(type)).single()).apply {
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, irGet(jni))
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = irGet(jni)
         }
 
         val decoded = when (wrappedType) {

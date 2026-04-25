@@ -72,25 +72,37 @@ class EnumCodec(
     private val encode = symbols.functions(encodeEnum).single()
     private val decode = symbols.functions(decodeEnum).single()
 
-    override fun IrStatementsBuilder<*>.irDecode(irContext: IrCodecContext, jni: IrValueDeclaration): IrExpression {
+    override fun IrStatementsBuilder<*>.irDecode(
+        irContext: IrCodecContext,
+        jni: IrValueDeclaration
+    ): IrExpression {
         return irCall(decode).apply {
-            putTypeArgument(0, localIrType)
-            putValueArgument(0, irGet(jni))
+            typeArguments[0] = localIrType
+            arguments[0] = irGet(jni)
         }
     }
 
-    override fun IrStatementsBuilder<*>.irEncode(irContext: IrCodecContext, local: IrValueDeclaration): IrExpression {
+    override fun IrStatementsBuilder<*>.irEncode(
+        irContext: IrCodecContext,
+        local: IrValueDeclaration
+    ): IrExpression {
         return irCall(encode).apply {
-            putTypeArgument(0, localIrType)
-            putValueArgument(0, irGet(local))
+            typeArguments[0] = localIrType
+            arguments[0] = irGet(local)
         }
     }
 
-    override fun CodeBlock.Builder.codegenDecode(codegenContext: CodegenCodecContext, jni: String): String {
+    override fun CodeBlock.Builder.codegenDecode(
+        codegenContext: CodegenCodecContext,
+        jni: String
+    ): String {
         return "kotlin.enums.enumEntries<${localCodegenType.name}>()[$jni]"
     }
 
-    override fun CodeBlock.Builder.codegenEncode(codegenContext: CodegenCodecContext, local: String): String {
+    override fun CodeBlock.Builder.codegenEncode(
+        codegenContext: CodegenCodecContext,
+        local: String
+    ): String {
         return "$local.ordinal"
     }
 }

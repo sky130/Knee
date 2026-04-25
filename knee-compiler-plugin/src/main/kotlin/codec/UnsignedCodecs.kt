@@ -8,6 +8,7 @@ import org.jetbrains.kotlin.backend.jvm.functionByName
 import org.jetbrains.kotlin.ir.builders.IrStatementsBuilder
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irGet
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrValueDeclaration
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.types.typeWith
@@ -30,12 +31,12 @@ private class UnsignedCodec(
     override fun toString(): String = description
 
     private val toUnsigned = symbols.functions(toUnsignedFunctions).single {
-        it.owner.extensionReceiverParameter?.type == signed.kn
+        it.owner.parameters.firstOrNull { it.kind == IrParameterKind.ExtensionReceiver }?.type == signed.kn
     }
     private val toSigned = symbols.klass(unsignedClass).functionByName(toSignedFunction)
 
     override fun IrStatementsBuilder<*>.irDecode(irContext: IrCodecContext, jni: IrValueDeclaration): IrExpression {
-        return irCall(toUnsigned).apply { extensionReceiver = irGet(jni) }
+        return irCall(toUnsigned).apply { arguments[symbol.owner.parameters.indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }] = irGet(jni) }
     }
 
     override fun IrStatementsBuilder<*>.irEncode(irContext: IrCodecContext, local: IrValueDeclaration): IrExpression {

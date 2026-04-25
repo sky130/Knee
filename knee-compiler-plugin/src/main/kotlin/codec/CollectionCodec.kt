@@ -11,6 +11,7 @@ import io.deepmedia.tools.knee.plugin.compiler.symbols.RuntimeIds.typedArraySpec
 import io.deepmedia.tools.knee.plugin.compiler.utils.irLambda
 import org.jetbrains.kotlin.ir.builders.*
 import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrValueDeclaration
 import org.jetbrains.kotlin.ir.expressions.IrDeclarationReference
 import org.jetbrains.kotlin.ir.expressions.IrExpression
@@ -95,7 +96,7 @@ class CollectionCodec(
             is JniType.Void -> error("Void is not allowed here.")
             is JniType.Primitive -> irGetObject(runtimeHelperClassRaw.symbol)
             is JniType.Object -> irCallConstructor(runtimeHelperClassRaw.primaryConstructor!!.symbol, emptyList()).apply {
-                putValueArgument(0, irString(type.jvm.jvmClassName))
+                arguments[0] = irString(type.jvm.jvmClassName)
             }
         }
     }
@@ -112,11 +113,11 @@ class CollectionCodec(
             CollectionKind.Array.getCollectionTypeOf(elementCodec.localIrType, this@CollectionCodec.context.symbols)
         )).apply {
             // Constructor param: CollectionCodec<Encoded, *>
-            putValueArgument(0, rawHelper)
-            // Constructor param: ArraySpec<DecodedArrayType, Decoded>
-            // Return type of this is symbols.klass(runtimeArraySpecClass)
-            // .typeWith(CollectionKind.Array.getCollectionType(elementCodec.localType, symbols), elementCodec.localType)
-            putValueArgument(1, when (val type = elementCodec.encodedType) {
+            arguments[0] = rawHelper
+// Constructor param: ArraySpec<DecodedArrayType, Decoded>
+// Return type of this is symbols.klass(runtimeArraySpecClass)
+// .typeWith(CollectionKind.Array.getCollectionType(elementCodec.localType, symbols), elementCodec.localType)
+            arguments[1] = when (val type = elementCodec.encodedType) {
                 is JniType.Void -> error("Void is not allowed here.")
                 is JniType.Primitive -> {
                     val name = PrimitiveArraySpec(type.jvmSimpleName)
@@ -125,30 +126,37 @@ class CollectionCodec(
                 is JniType.Object -> {
                     val name = typedArraySpec
                     irCall(this@CollectionCodec.context.symbols.functions(name).single()).apply {
-                        putTypeArgument(0, type.kn)
+                        typeArguments[0] = type.kn
                     }
                 }
-            })
-            // Constructor param: Source --> Transformed decoding lambda
-            putValueArgument(2, irLambda(
+            }
+// Constructor param: Source --> Transformed decoding lambda
+            arguments[2] = irLambda(
                 context = this@CollectionCodec.context,
                 parent = this@irGetOrCreateHelper.parent,
                 valueParameters = listOf(elementCodec.encodedType.knOrNull!!),
                 returnType = elementCodec.localIrType,
                 content = { lambda ->
-                    +irReturn(with(elementCodec) { irDecode(codecContext, lambda.valueParameters[0]) })
+                    +irReturn(with(elementCodec) { irDecode(codecContext, lambda.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0]) })
                 }
-            ))
-            // Constructor param: Transformed --> Source encoding lambda
-            putValueArgument(3, irLambda(
+            )
+// Constructor param: Transformed --> Source encoding lambda
+            arguments[3] = irLambda(
                 context = this@CollectionCodec.context,
                 parent = this@irGetOrCreateHelper.parent,
                 valueParameters = listOf(elementCodec.localIrType),
                 returnType = elementCodec.encodedType.knOrNull!!,
                 content = { lambda ->
-                    +irReturn(with(elementCodec) { irEncode(codecContext, lambda.valueParameters[0]) })
+                    +irReturn(
+                        with(elementCodec) {
+                            irEncode(
+                                codecContext,
+                                lambda.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0]
+                            )
+                        }
+                    )
                 }
-            ))
+            )
 
         }
     }
@@ -159,8 +167,10 @@ class CollectionCodec(
         val decode = runtimeHelperClass.functions.single { it.name.asString() == "decodeInto${collectionKind.name}" }
         return irCall(decode).apply {
             dispatchReceiver = irGet(codec)
-            extensionReceiver = irGet(irContext.environment)
-            putValueArgument(0, irGet(jni))
+            symbol.owner.parameters
+                .indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
+                .also { arguments[it] = irGet(irContext.environment) }
+            arguments[0] = irGet(jni)
         }
     }
 
@@ -170,8 +180,10 @@ class CollectionCodec(
         val encode = runtimeHelperClass.functions.single { it.name.asString() == "encode${collectionKind.name}" }
         return irCall(encode).apply {
             dispatchReceiver = irGet(codec)
-            extensionReceiver = irGet(irContext.environment)
-            putValueArgument(0, irGet(local))
+            symbol.owner.parameters
+                .indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
+                .also { arguments[it] = irGet(irContext.environment) }
+            arguments[0] = irGet(local)
         }
     }
 

@@ -69,8 +69,8 @@ class ExportedCodec1(symbols: KneeSymbols, type: IrType, private val exportInfo:
     ): IrExpression {
         return irCall(irSpec.functions.first { it.name.asString() == "read" }).apply {
             dispatchReceiver = irGetObject(irSpec.symbol)
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, irGet(jni))
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = irGet(jni)
         }
     }
 
@@ -80,8 +80,8 @@ class ExportedCodec1(symbols: KneeSymbols, type: IrType, private val exportInfo:
     ): IrExpression {
         return irCall(irSpec.functions.first { it.name.asString() == "write" }).apply {
             dispatchReceiver = irGetObject(irSpec.symbol)
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, irGet(local))
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = irGet(local)
         }
     }
 

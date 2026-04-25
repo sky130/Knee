@@ -4,6 +4,7 @@ import com.squareup.kotlinpoet.CodeBlock
 import com.squareup.kotlinpoet.MemberName
 import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.cli.common.messages.MessageCollector
+import org.jetbrains.kotlin.ir.InternalSymbolFinderAPI
 import org.jetbrains.kotlin.ir.builders.*
 import org.jetbrains.kotlin.ir.declarations.IrDeclaration
 import org.jetbrains.kotlin.ir.declarations.IrValueDeclaration
@@ -12,8 +13,11 @@ import org.jetbrains.kotlin.ir.symbols.IrSimpleFunctionSymbol
 import org.jetbrains.kotlin.ir.types.makeNullable
 import org.jetbrains.kotlin.ir.util.file
 import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.ir.IrBuiltIns
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 
 class KneeLogger(
+    private val kneeContext: KneeContext,
     private val collector: MessageCollector,
     private val verboseLogs: Boolean,
     private val verboseRuntime: Boolean
@@ -35,15 +39,21 @@ class KneeLogger(
     fun injectLog(scope: IrStatementsBuilder<*>, message: String) {
         if (!verboseRuntime) return
 
+        @OptIn(InternalSymbolFinderAPI::class)
         if (printlnIrString == null) {
-            val builtIns = (scope.parent as IrDeclaration).file.module.irBuiltins
-            val function = builtIns.findFunctions(Name.identifier("println"), "kotlin", "io")
-            printlnIrString = function.single { it.owner.valueParameters.firstOrNull()?.type == builtIns.stringType }
+            val builtIns = kneeContext.plugin.irBuiltIns
+            val symbolFinder = builtIns.symbolFinder
+            val function = symbolFinder.findFunctions(Name.identifier("println"), "kotlin", "io")
+            printlnIrString = function.single {
+                it.owner.parameters
+                    .firstOrNull { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+                    ?.type == builtIns.stringType
+            }
         }
 
         with(scope) {
             +irCall(printlnIrString!!).apply {
-                putValueArgument(0, scope.irString("[KNEE_KN] $message"))
+                arguments[0] = scope.irString("[KNEE_KN] $message")
             }
         }
     }
@@ -51,15 +61,21 @@ class KneeLogger(
     fun injectLog(scope: IrStatementsBuilder<*>, objToPrint: IrValueDeclaration) {
         if (!verboseRuntime) return
 
+        @OptIn(InternalSymbolFinderAPI::class)
         if (printlnIrAny == null) {
-            val builtIns = (scope.parent as IrDeclaration).file.module.irBuiltins
-            val function = builtIns.findFunctions(Name.identifier("println"), "kotlin", "io")
-            printlnIrAny = function.single { it.owner.valueParameters.firstOrNull()?.type == builtIns.anyType.makeNullable() }
+            val builtIns = kneeContext.plugin.irBuiltIns
+            val symbolFinder = builtIns.symbolFinder
+            val function = symbolFinder.findFunctions(Name.identifier("println"), "kotlin", "io")
+            printlnIrAny = function.single {
+                it.owner.parameters
+                    .firstOrNull { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+                    ?.type == builtIns.anyType.makeNullable()
+            }
         }
 
         with(scope) {
             +irCall(printlnIrAny!!).apply {
-                putValueArgument(0, irGet(objToPrint))
+                arguments[0] = irGet(objToPrint)
             }
         }
     }

@@ -11,6 +11,7 @@ import io.deepmedia.tools.knee.plugin.compiler.symbols.PlatformIds
 import io.deepmedia.tools.knee.plugin.compiler.utils.irLambda
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
 import org.jetbrains.kotlin.ir.builders.*
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.util.constructors
@@ -47,7 +48,7 @@ object ExportAdapters2 {
         val jniEnvironmentType = context.symbols.klass(CInteropIds.CPointer).typeWith(context.symbols.typeAliasUnwrapped(PlatformIds.JNIEnvVar))
         return irCallConstructor(adapterClass.constructors.single(), listOf(info.encodedType.kn, info.localIrType)).apply {
             // Encode
-            putValueArgument(0, irLambda(
+            arguments[0] = irLambda(
                 context = context,
                 parent = parent,
                 valueParameters = listOf(jniEnvironmentType, info.localIrType),
@@ -55,13 +56,13 @@ object ExportAdapters2 {
                 content = { lambda ->
                     // Note: reverse = false but we don't relly know if the obj being converted is a param or return type
                     // TODO: reconsider this reverse flag as it does not generalize properly to export specs
-                    val codecContext = IrCodecContext(null, lambda.valueParameters[0], false, context.log)
+                    val codecContext = IrCodecContext(null, lambda.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0], false, context.log)
                     val codec = context.mapper.get(info.localIrType)
-                    with(codec) { +irReturn(irEncode(codecContext, lambda.valueParameters[1])) }
+                    with(codec) { +irReturn(irEncode(codecContext, lambda.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[1])) }
                 }
-            ))
+            )
             // Decode
-            putValueArgument(1, irLambda(
+            arguments[1] = irLambda(
                 context = context,
                 parent = parent,
                 valueParameters = listOf(jniEnvironmentType, info.encodedType.kn),
@@ -69,11 +70,11 @@ object ExportAdapters2 {
                 content = { lambda ->
                     // Note: reverse = false but we don't relly know if the obj being converted is a param or return type
                     // TODO: reconsider this reverse flag as it does not generalize properly to export specs
-                    val codecContext = IrCodecContext(null, lambda.valueParameters[0], false, context.log)
+                    val codecContext = IrCodecContext(null, lambda.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0], false, context.log)
                     val codec = context.mapper.get(info.localIrType)
-                    with(codec) { +irReturn(irDecode(codecContext, lambda.valueParameters[1])) }
+                    with(codec) { +irReturn(irDecode(codecContext, lambda.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[1])) }
                 }
-            ))
+            )
         }
     }
 }

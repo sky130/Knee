@@ -31,8 +31,8 @@ fun IrDeclaration.isPartOf(module: IrModuleFragment): Boolean {
 
 fun IrFunction.requireNotComplex(description: Any, allowSuspend: Boolean = false) {
     require(typeParameters.isEmpty()) { "$description can't have type parameters." }
-    require(extensionReceiverParameter == null) { "$description can't be an extension function." }
-    require(contextReceiverParametersCount == 0) { "$description can't have context receivers." }
+    require(parameters.firstOrNull { it.kind == IrParameterKind.ExtensionReceiver } == null) { "$description can't be an extension function." }
+    require(parameters.count { it.kind == IrParameterKind.Context } == 0) { "$description can't have context receivers." }
     require(allowSuspend || !isSuspend) { "$description can't be suspend." }
     require(!isExpect) { "$description can't be an expect function, please annotate the actual function instead." }
 }
@@ -173,13 +173,16 @@ fun irLambda(
     return IrFunctionExpressionImpl(
         startOffset = SYNTHETIC_OFFSET,
         endOffset = SYNTHETIC_OFFSET,
-        type = run {
-            when (suspend) {
-                false -> context.symbols.klass(KotlinIds.FunctionX(lambda.valueParameters.size))
-                true -> context.symbols.klass(KotlinIds.SuspendFunctionX(lambda.valueParameters.size))
-                // true -> context.irBuiltIns.suspendFunctionN(lambda.valueParameters.size)
-            }.typeWith(*lambda.valueParameters.map { it.type }.toTypedArray(), lambda.returnType)
-        },
+        type = lambda.parameters
+            .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+            .run {
+                val arity = size
+                val klass = when (suspend) {
+                    false -> context.symbols.klass(KotlinIds.FunctionX(arity))
+                    true  -> context.symbols.klass(KotlinIds.SuspendFunctionX(arity))
+                }
+                klass.typeWith(*map { it.type }.toTypedArray(), lambda.returnType)
+            },
         origin = IrStatementOrigin.LAMBDA,
         function = lambda
     )
@@ -188,7 +191,7 @@ fun irLambda(
 fun IrBuilderWithScope.irError(symbols: KneeSymbols, message: String): IrExpression {
     val error = symbols.functions(KotlinIds.error).single()
     return irCall(error).apply {
-        putValueArgument(0, irString(message))
+        arguments[0] = irString(message)
     }
 }
 

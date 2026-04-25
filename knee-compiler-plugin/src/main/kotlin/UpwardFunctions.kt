@@ -140,14 +140,18 @@ private fun KneeUpwardFunction.makeIr(context: KneeContext, signature: UpwardFun
             val jvmMethodOwner = irTemporary(kind.parent.irGetMethodOwner(this))
             val jvmMethod = irTemporary(kind.parent.irGetMethod(this, signature))
             val jvmObject = irTemporary(kind.parent.irGetJvmObject(this))
-            val args = valueParameters
+            val args = parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
             if (!signature.isSuspend) {
                 +irReturn(irCall(
                     callee = context.symbols.functions(useEnv).single()
                 ).apply {
-                    extensionReceiver = kind.parent.irGetVirtualMachine(this@irBlockBody)
-                    putTypeArgument(0, signature.result.localIrType)
-                    putValueArgument(0, irLambda(
+                    symbol.owner.parameters
+                        .indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
+                        .also {
+                            arguments[it] = kind.parent.irGetVirtualMachine(this@irBlockBody)
+                        }
+                    typeArguments[0] = signature.result.localIrType
+                    arguments[0] = irLambda(
                         context = context,
                         parent = parent,
                         content = { lambda ->
@@ -161,16 +165,16 @@ private fun KneeUpwardFunction.makeIr(context: KneeContext, signature: UpwardFun
                                 +irReturn(irReceive(raw, signature, codecContext))
                             }
                         }
-                    ))
+                    )
                 })
             } else {
                 // See kneeInvokeKnSuspend signature in runtime
                 context.log.injectLog(this, "$logPrefix suspend machinery started")
                 +irReturn(irCall(context.symbols.functions(kneeInvokeKnSuspend).single()).apply {
-                    putTypeArgument(0, signature.result.encodedType.knOrNull ?: context.symbols.builtIns.unitType)
-                    putTypeArgument(1, signature.result.localIrType)
-                    putValueArgument(0, kind.parent.irGetVirtualMachine(this@irBlockBody))
-                    putValueArgument(1, irLambda(context, parent) { lambda ->
+                    typeArguments[0] = signature.result.encodedType.knOrNull ?: context.symbols.builtIns.unitType
+                    typeArguments[1] = signature.result.localIrType
+                    arguments[0] = kind.parent.irGetVirtualMachine(this@irBlockBody)
+                    arguments[1] = irLambda(context, parent) { lambda ->
                         val env = lambda.addValueParameter("_env", envType)
                         val invoker = lambda.addValueParameter("_invoker", context.symbols.builtIns.longType)
                         lambda.returnType = signature.suspendResult.localIrType
@@ -181,8 +185,8 @@ private fun KneeUpwardFunction.makeIr(context: KneeContext, signature: UpwardFun
                             context.log.injectLog(this@irBlockBody, "$logPrefix received the invocation token")
                             +irReturn(irReceive(raw, signature, codecContext, suspendToken = true))
                         }
-                    })
-                    putValueArgument(2, irLambda(context, parent) { lambda ->
+                    }
+                    arguments[2] = irLambda(context, parent) { lambda ->
                         val env = lambda.addValueParameter("_env", envType)
                         val raw = lambda.addValueParameter("_result", signature.result.encodedType.knOrNull ?: context.symbols.builtIns.unitType)
                         lambda.returnType = signature.result.localIrType
@@ -191,7 +195,7 @@ private fun KneeUpwardFunction.makeIr(context: KneeContext, signature: UpwardFun
                             context.log.injectLog(this@irBlockBody, "$logPrefix received the suspend function result. unwrapping it")
                             +irReturn(irReceive(irGet(raw), signature, codecContext))
                         }
-                    })
+                    }
                 })
             }
         }

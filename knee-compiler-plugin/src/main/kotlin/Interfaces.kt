@@ -85,7 +85,7 @@ fun processInterface(interface_: KneeInterface, context: KneeContext, codegen: K
         interface_.irGetJvmObject = { irCall(jvmInterfaceObject).apply { dispatchReceiver = irThis() }}
         interface_.irGetMethod = { signature -> irCall(methodFromSignature).apply {
             dispatchReceiver = irThis()
-            putValueArgument(0, irString(signature.jniInfo.name(false).asString() + "::" + signature.jniInfo.signature))
+            arguments[0] =  irString(signature.jniInfo.name(false).asString() + "::" + signature.jniInfo.signature)
         }}
     }
 
@@ -157,7 +157,7 @@ private fun KneeInterface.makeIrImplementation(context: KneeContext) {
     }.also { wrapperClass ->
         wrapperClass.parent = container
         wrapperClass.superTypes = listOf(sourceConcreteType, superClass.typeWith(sourceConcreteType))
-        wrapperClass.createParameterDeclarations() // <this> receiver
+        wrapperClass.createThisReceiverParameter() // <this> receiver
     }
     container.addChild(wrapperClass)
     irProducts.add(wrapperClass)
@@ -172,8 +172,14 @@ private fun KneeInterface.makeIrImplementationContents(context: KneeContext) {
         this.isPrimary = true
     }.let { constructor ->
         val superConstructor = superClass.primaryConstructor!!
-        constructor.valueParameters += superConstructor.valueParameters[0].copyTo(constructor, defaultValue = null) // 0: JniEnvironment
-        constructor.valueParameters += superConstructor.valueParameters[1].copyTo(constructor, defaultValue = null) // 1: jobject
+        superConstructor.parameters
+            .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0]
+            .copyTo(constructor, defaultValue = null) // 0: JniEnvironment
+            .let { constructor.parameters += it }
+        superConstructor.parameters
+            .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[1]
+            .copyTo(constructor, defaultValue = null) // 1: jobject
+            .let { constructor.parameters += it }
         constructor.body = with(DeclarationIrBuilder(context.plugin, constructor.symbol)) {
             irBlockBody {
                 context.log.injectLog(this, "Calling super constructor")
@@ -181,16 +187,17 @@ private fun KneeInterface.makeIrImplementationContents(context: KneeContext) {
                 // context.log.injectLog(this, CodegenType.from(irImplementation.defaultType).jvmClassName)
 
                 +irDelegatingConstructorCall(superConstructor).apply {
-                    putValueArgument(0, irGet(constructor.valueParameters[0]))
-                    putValueArgument(1, irGet(constructor.valueParameters[1]))
+                    arguments[0] = irGet(constructor.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0])
+                    arguments[1] = irGet(constructor.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[1])
                     // Class FQNs will be passed to jni.findClass, so handle dollar sign and codegen renames correctly
-                    putValueArgument(2, irString(CodegenType.from(sourceConcreteType).jvmClassName))
-                    putValueArgument(3, irString(CodegenType.from(irImplementation.defaultType).jvmClassName))
+                    arguments[2] = irString(CodegenType.from(sourceConcreteType).jvmClassName)
+                    arguments[3] = irString(CodegenType.from(irImplementation.defaultType).jvmClassName)
+
                     // Name and signature of the companion object function, alternated
                     val allExportedFunctions = upwardFunctions +
                             upwardProperties.mapNotNull(KneeUpwardProperty::setter) +
                             upwardProperties.map(KneeUpwardProperty::getter)
-                    putValueArgument(4, irVararg(
+                    arguments[4] = irVararg(
                         elementType = context.symbols.builtIns.stringType,
                         values = allExportedFunctions.flatMap {
                             val signature = UpwardFunctionSignature(it.source, it.kind, context.symbols, context.mapper)
@@ -199,7 +206,7 @@ private fun KneeInterface.makeIrImplementationContents(context: KneeContext) {
                                 irString(signature.jniInfo.signature)
                             )
                         }
-                    ))
+                    )
                 }
                 context.log.injectLog(this, "Called super constructor, init self")
                 +IrInstanceInitializerCallImpl(startOffset, endOffset, irImplementation.symbol, context.symbols.builtIns.unitType)
@@ -253,9 +260,9 @@ class InterfaceCodec(
      */
     override fun IrStatementsBuilder<*>.irEncode(irContext: IrCodecContext, local: IrValueDeclaration): IrExpression {
         return irCall(encode).apply {
-            putTypeArgument(0, localIrType)
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, irGet(local))
+            typeArguments[0] = localIrType
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = irGet(local)
         }
     }
 
@@ -269,10 +276,10 @@ class InterfaceCodec(
         val logPrefix = "InterfaceCodec(${localCodegenType.name.simpleName})"
         irContext.logger.injectLog(this, "$logPrefix DECODING")
         return irCall(decode).apply {
-            putTypeArgument(0, localIrType)
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, irGet(jni))
-            putValueArgument(2, irLambda(
+            typeArguments[0] = localIrType
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = irGet(jni)
+            arguments[2] = irLambda(
                 context = this@InterfaceCodec.context,
                 parent = parent,
                 valueParameters = emptyList(),
@@ -282,11 +289,11 @@ class InterfaceCodec(
                     // irContext.logger.injectLog(this, irContext.environment)
                     // irContext.logger.injectLog(this, jni)
                     +irReturn(irCallConstructor(interfaceImplClass.primaryConstructor!!.symbol, emptyList()).apply {
-                        putValueArgument(0, irGet(irContext.environment)) // environment
-                        putValueArgument(1, irGet(jni)) // jobject
+                        arguments[0] = irGet(irContext.environment) // environment
+                        arguments[1] = irGet(jni) // jobject
                     })
                 }
-            ))
+            )
         }
     }
 

@@ -23,19 +23,29 @@ import org.jetbrains.kotlin.ir.builders.*
 import org.jetbrains.kotlin.ir.builders.declarations.addValueParameter
 import org.jetbrains.kotlin.ir.builders.declarations.buildVariable
 import org.jetbrains.kotlin.ir.declarations.IrDeclarationOrigin
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.expressions.impl.IrConstImpl
 import org.jetbrains.kotlin.ir.types.isAny
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.name.Name
 
-fun processDownwardFunction(function: KneeDownwardFunction, context: KneeContext, codegen: KneeCodegen, initInfo: InitInfo) {
+fun processDownwardFunction(
+    function: KneeDownwardFunction,
+    context: KneeContext,
+    codegen: KneeCodegen,
+    initInfo: InitInfo
+) {
     val signature = DownwardFunctionSignature(function.source, function.kind, context)
     function.makeIr(context, signature, initInfo)
     function.makeCodegen(codegen, signature, context.log)
 }
 
-private fun KneeDownwardFunction.makeCodegen(codegen: KneeCodegen, signature: DownwardFunctionSignature, logger: KneeLogger) {
+private fun KneeDownwardFunction.makeCodegen(
+    codegen: KneeCodegen,
+    signature: DownwardFunctionSignature,
+    logger: KneeLogger
+) {
     // Unlike IR, we have to generate both the bridge function and the local function.
     // First we make the local function, whose implementation will call the bridge
     val localName = source.name.asString()
@@ -48,6 +58,7 @@ private fun KneeDownwardFunction.makeCodegen(codegen: KneeCodegen, signature: Do
         kind is Kind.ClassConstructor -> FunSpec
             .constructorBuilder()
             .addModifiers(source.visibility.asModifier())
+
         else -> FunSpec
             .builder(localName)
             .addModifiers(source.visibility.asModifier())
@@ -89,11 +100,16 @@ private fun KneeDownwardFunction.makeCodegen(codegen: KneeCodegen, signature: Do
         // Exclude prefixes, they only refer to bridge functions
         signature.regularParameters.forEach { (param, codec) ->
             val name = param.asStringSafeForCodegen(true)
-            val defaultValue = source.valueParameters.firstOrNull { it.name == param }?.defaultValueForCodegen(expectSources)
+            val defaultValue = source.parameters
+                .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+                .firstOrNull { it.name == param }
+                ?.defaultValueForCodegen(expectSources)
             // addParameter(name, codec.localCodegenType.name)
-            addParameter(ParameterSpec.builder(name, codec.localCodegenType.name)
-                .defaultValue(defaultValue)
-                .build())
+            addParameter(
+                ParameterSpec.builder(name, codec.localCodegenType.name)
+                    .defaultValue(defaultValue)
+                    .build()
+            )
         }
         // BODY
         with(DownwardFunctionsCodegen) {
@@ -101,8 +117,14 @@ private fun KneeDownwardFunction.makeCodegen(codegen: KneeCodegen, signature: Do
             if (signature.isSuspend) {
                 // public suspend fun <T> kneeInvokeJvmSuspend(block: (KneeSuspendInvoker<T>) -> Long): T
                 addCode(CodeBlock.builder().apply {
-                    val invoke = MemberName("io.deepmedia.tools.knee.runtime.compiler", "kneeInvokeJvmSuspend")
-                    beginControlFlow("val res = %M { ${DownwardFunctionSignature.Extra.SuspendInvoker} ->", invoke)
+                    val invoke = MemberName(
+                        "io.deepmedia.tools.knee.runtime.compiler",
+                        "kneeInvokeJvmSuspend"
+                    )
+                    beginControlFlow(
+                        "val res = %M { ${DownwardFunctionSignature.Extra.SuspendInvoker} ->",
+                        invoke
+                    )
                     bridgeSpec = codegenInvoke(signature, bridgeName, "val token = ", codecContext)
                     codegenReceive("token", signature, "", codecContext, suspendToken = true)
                     endControlFlow()
@@ -139,7 +161,12 @@ private fun KneeDownwardFunction.makeCodegen(codegen: KneeCodegen, signature: Do
     }
     val bridgeContainer = when (kind) { // skip properties in this case
         is Kind.InterfaceMember -> kind.owner.codegenImplementation
-        is Kind.ClassConstructor -> codegen.prepareContainer(source, kind.importInfo, createCompanionObject = true)
+        is Kind.ClassConstructor -> codegen.prepareContainer(
+            source,
+            kind.importInfo,
+            createCompanionObject = true
+        )
+
         else -> codegen.prepareContainer(source, kind.importInfo, detectPropertyAccessors = false)
     }
 
@@ -166,7 +193,11 @@ private fun KneeDownwardFunction.makeCodegen(codegen: KneeCodegen, signature: Do
     }
 }
 
-private fun KneeDownwardFunction.makeIr(context: KneeContext, signature: DownwardFunctionSignature, initInfo: InitInfo) {
+private fun KneeDownwardFunction.makeIr(
+    context: KneeContext,
+    signature: DownwardFunctionSignature,
+    initInfo: InitInfo
+) {
     val file = kind.importInfo?.file ?: source.file
     val property = file.addSimpleProperty(
         plugin = context.plugin,
@@ -183,7 +214,7 @@ private fun KneeDownwardFunction.makeIr(context: KneeContext, signature: Downwar
             }
         )
         // only argument of staticCFunction is a lambda
-        staticCFunctionCall.putValueArgument(0, irLambda(
+        staticCFunctionCall.arguments[0] = irLambda(
             context = context,
             parent = parent,
             content = { lambda ->
@@ -191,31 +222,48 @@ private fun KneeDownwardFunction.makeIr(context: KneeContext, signature: Downwar
                 var args = 0
                 signature.knPrefixParameters.forEach { (name, type) ->
                     lambda.addValueParameter(name, type, KneeOrigin.KNEE)
-                    staticCFunctionCall.putTypeArgument(args++, type)
+                    staticCFunctionCall.typeArguments[args++] = type
                 }
                 signature.extraParameters.forEach { (param, codec) ->
                     val type = codec.encodedType.knOrNull!!
                     lambda.addValueParameter(param, type)
-                    staticCFunctionCall.putTypeArgument(args++, type)
+                    staticCFunctionCall.typeArguments[args++] = type
                 }
                 signature.regularParameters.forEach { (param, codec) ->
                     val type = codec.encodedType.knOrNull!!
-                    val sourceParam = source.valueParameters.first { it.name == param }
+                    val sourceParam =
+                        source.parameters
+                            .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+                            .first { it.name == param }
                     // defaultValue = null is very important here because we are changing the type, potentially
-                    lambda.valueParameters += sourceParam.copyTo(lambda, index = args, type = type, name = param, defaultValue = null)
-                    staticCFunctionCall.putTypeArgument(args++, type)
+                    /**
+                     * index will be solve with new compiler,
+                     *
+                     * @see [org.jetbrains.kotlin.ir.declarations.impl.IrFactoryImpl.createValueParameter]
+                     */
+                    lambda.parameters += sourceParam.copyTo(
+                        lambda,
+                        // index = args,
+                        type = type,
+                        name = param,
+                        defaultValue = null
+                    )
+                    staticCFunctionCall.typeArguments[args++] = type
                 }
                 run {
-                    val resultOrSuspendResult = (if (signature.isSuspend) signature.suspendResult else signature.result)
-                        .encodedType.knOrNull ?: context.symbols.builtIns.unitType
+                    val resultOrSuspendResult =
+                        (if (signature.isSuspend) signature.suspendResult else signature.result)
+                            .encodedType.knOrNull ?: context.symbols.builtIns.unitType
                     lambda.returnType = resultOrSuspendResult
-                    staticCFunctionCall.putTypeArgument(args, resultOrSuspendResult)
+                    staticCFunctionCall.typeArguments[args] = resultOrSuspendResult
                 }
 
 
                 // actual body where we call the user-defined function and do mapping
                 val environment =
-                    lambda.valueParameters.first { it.name == DownwardFunctionSignature.KnPrefix.JniEnvironment }
+                    lambda.parameters
+                        .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+                        .first { it.name == DownwardFunctionSignature.KnPrefix.JniEnvironment }
                 val codecContext = IrCodecContext(
                     functionSymbol = source.symbol,
                     environment = environment,
@@ -224,86 +272,143 @@ private fun KneeDownwardFunction.makeIr(context: KneeContext, signature: Downwar
                 )
                 val logPrefix = "Functions.kt(${source.fqNameWhenAvailable})"
                 context.log.injectLog(this, "$logPrefix CALLED FROM JVM")
-                +irReturn(if (!signature.isSuspend) {
-                    with(DownwardFunctionsIr) {
-                        // val raw = irInvoke(lambda.valueParameters, source, signature, codecContext)
-                        // irReceive(raw, signature, codecContext)
-                        val catch = buildVariable(parent, SYNTHETIC_OFFSET, SYNTHETIC_OFFSET, IrDeclarationOrigin.CATCH_PARAMETER, Name.identifier("t"), context.symbols.builtIns.throwableType)
-                        irTry(
-                            type = signature.result.encodedType.knOrNull ?: context.symbols.builtIns.unitType,
-                            tryResult = irComposite {
-                                val raw = irInvoke(lambda.valueParameters, source, signature, codecContext)
-                                +irReceive(raw, signature, codecContext)
-                            },
-                            catches = listOf(irCatch(
-                                catchParameter = catch,
-                                result = irComposite {
-                                    // Forward the error to the JVM and swallow it on the native side.
-                                    +irCall(context.symbols.functions(rethrowNativeException).single()).apply {
-                                        extensionReceiver = irGet(environment)
-                                        putValueArgument(0, irGet(catch))
-                                    }
-                                    // Return 'something' here otherwise compilation fails (I think).
-                                    // It will never be used anyway because the JVM will throw due to previous command.
-                                    +when (val type = signature.result.encodedType) {
-                                        is JniType.Void -> irUnit()
-                                        is JniType.Object -> irNull()
-                                        is JniType.Int -> irInt(0)
-                                        is JniType.Long -> irLong(0)
-                                        is JniType.Float -> IrConstImpl.float(startOffset, endOffset, type.kn, 0F)
-                                        is JniType.Double -> IrConstImpl.double(startOffset, endOffset, type.kn, 0.0)
-                                        is JniType.Byte -> IrConstImpl.byte(startOffset, endOffset, type.kn, 0)
-                                        is JniType.BooleanAsUByte -> IrConstImpl.byte(startOffset, endOffset, type.kn, 0) // hope this works...
-                                    }
-                                }
-                            )),
-                            finallyExpression = null
-                        )
-                    }
-                } else {
-                    val suspendInvoke = context.symbols.functions(kneeInvokeJvmSuspend).single()
-                    val suspendInvoker =
-                        irGet(lambda.valueParameters.first { it.name == DownwardFunctionSignature.Extra.SuspendInvoker })
-                    val returnType = signature.result
-                    irCall(suspendInvoke.owner).apply {
-                        putTypeArgument(0, returnType.encodedType.knOrNull ?: context.symbols.builtIns.unitType) // raw return type
-                        putTypeArgument(1, returnType.localIrType) // actual return type
-                        putValueArgument(0, irGet(environment))
-                        putValueArgument(1, suspendInvoker)
-                        putValueArgument(2, irLambda(context, parent, suspend = true) {
-                            it.returnType = returnType.localIrType
-                            with(DownwardFunctionsIr) {
-                                +irReturn(irInvoke(lambda.valueParameters, source, signature, codecContext))
-                            }
-                        })
-                        putValueArgument(3, irLambda(context, parent) {
-                            it.returnType = returnType.encodedType.knOrNull ?: context.symbols.builtIns.unitType
-                            it.addValueParameter("_env", environment.type)
-                            it.addValueParameter("_data", returnType.localIrType)
-                            // Need a new context because the local invocation might have suspended and might have returned
-                            // on another thread with no current environment. This is also why we have two lambdas here, so that the
-                            // new environment is provided by the runtime.
-                            val freshCodecContext = IrCodecContext(
-                                functionSymbol = source.symbol,
-                                environment = it.valueParameters[0],
-                                reverse = false,
-                                logger = context.log
-                            )
-                            val raw = irGet(it.valueParameters[1])
-                            with(DownwardFunctionsIr) {
-                                +irReturn(irReceive(raw, signature, freshCodecContext))
-                            }
-                        })
-                    }.let { call ->
-                        // Technically this is useless, token is a long and needs to conversion, but leaving it
-                        // for clarity and future-proofness.
+                +irReturn(
+                    if (!signature.isSuspend) {
                         with(DownwardFunctionsIr) {
-                            irReceive(call, signature, codecContext, suspendToken = true)
+                            // val raw = irInvoke(lambda.valueParameters, source, signature, codecContext)
+                            // irReceive(raw, signature, codecContext)
+                            val catch = buildVariable(
+                                parent,
+                                SYNTHETIC_OFFSET,
+                                SYNTHETIC_OFFSET,
+                                IrDeclarationOrigin.CATCH_PARAMETER,
+                                Name.identifier("t"),
+                                context.symbols.builtIns.throwableType
+                            )
+                            irTry(
+                                type = signature.result.encodedType.knOrNull
+                                    ?: context.symbols.builtIns.unitType,
+                                tryResult = irComposite {
+                                    val raw = irInvoke(
+                                        lambda.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context },
+                                        source,
+                                        signature,
+                                        codecContext
+                                    )
+                                    +irReceive(raw, signature, codecContext)
+                                },
+                                catches = listOf(
+                                    irCatch(
+                                        catchParameter = catch,
+                                        result = irComposite {
+                                            // Forward the error to the JVM and swallow it on the native side.
+                                            +irCall(
+                                                context.symbols.functions(rethrowNativeException)
+                                                    .single()
+                                            ).apply {
+                                                symbol.owner.parameters
+                                                    .indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
+                                                    .also { arguments[it] = irGet(environment) }
+                                                arguments[0] = irGet(catch)
+                                            }
+                                            // Return 'something' here otherwise compilation fails (I think).
+                                            // It will never be used anyway because the JVM will throw due to previous command.
+                                            +when (val type = signature.result.encodedType) {
+                                                is JniType.Void -> irUnit()
+                                                is JniType.Object -> irNull()
+                                                is JniType.Int -> irInt(0)
+                                                is JniType.Long -> irLong(0)
+                                                is JniType.Float -> IrConstImpl.float(
+                                                    startOffset,
+                                                    endOffset,
+                                                    type.kn,
+                                                    0F
+                                                )
+
+                                                is JniType.Double -> IrConstImpl.double(
+                                                    startOffset,
+                                                    endOffset,
+                                                    type.kn,
+                                                    0.0
+                                                )
+
+                                                is JniType.Byte -> IrConstImpl.byte(
+                                                    startOffset,
+                                                    endOffset,
+                                                    type.kn,
+                                                    0
+                                                )
+
+                                                is JniType.BooleanAsUByte -> IrConstImpl.byte(
+                                                    startOffset,
+                                                    endOffset,
+                                                    type.kn,
+                                                    0
+                                                ) // hope this works...
+                                            }
+                                        }
+                                    )),
+                                finallyExpression = null
+                            )
                         }
-                    }
-                })
+                    } else {
+                        val suspendInvoke = context.symbols.functions(kneeInvokeJvmSuspend).single()
+                        val suspendInvoker =
+                            irGet(lambda.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+                                .first { it.name == DownwardFunctionSignature.Extra.SuspendInvoker })
+                        val returnType = signature.result
+                        irCall(suspendInvoke.owner).apply {
+
+                            typeArguments[0] =
+                                returnType.encodedType.knOrNull
+                                    ?: context.symbols.builtIns.unitType // raw return type
+                            typeArguments[1] = returnType.localIrType // actual return type
+                            arguments[0] = irGet(environment)
+                            arguments[1] = suspendInvoker
+                            arguments[2] = irLambda(context, parent, suspend = true) {
+                                it.returnType = returnType.localIrType
+                                with(DownwardFunctionsIr) {
+                                    +irReturn(
+                                        irInvoke(
+                                            lambda.parameters
+                                                .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context },
+                                            source,
+                                            signature,
+                                            codecContext
+                                        )
+                                    )
+                                }
+                            }
+                            arguments[3] = irLambda(context, parent) {
+                                it.returnType = returnType.encodedType.knOrNull
+                                    ?: context.symbols.builtIns.unitType
+                                it.addValueParameter("_env", environment.type)
+                                it.addValueParameter("_data", returnType.localIrType)
+                                // Need a new context because the local invocation might have suspended and might have returned
+                                // on another thread with no current environment. This is also why we have two lambdas here, so that the
+                                // new environment is provided by the runtime.
+                                val freshCodecContext = IrCodecContext(
+                                    functionSymbol = source.symbol,
+                                    environment = it.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0],
+                                    reverse = false,
+                                    logger = context.log
+                                )
+                                val raw =
+                                    irGet(it.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[1])
+                                with(DownwardFunctionsIr) {
+                                    +irReturn(irReceive(raw, signature, freshCodecContext))
+                                }
+                            }
+                        }.let { call ->
+                            // Technically this is useless, token is a long and needs to conversion, but leaving it
+                            // for clarity and future-proofness.
+                            with(DownwardFunctionsIr) {
+                                irReceive(call, signature, codecContext, suspendToken = true)
+                            }
+                        }
+                    })
             }
-        ))
+        )
         staticCFunctionCall
     }
     irProducts.add(property)

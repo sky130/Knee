@@ -9,7 +9,6 @@ import io.deepmedia.tools.knee.plugin.compiler.import.writableParent
 import io.deepmedia.tools.knee.plugin.compiler.utils.asPropertySpec
 import io.deepmedia.tools.knee.plugin.compiler.utils.asTypeSpec
 import io.deepmedia.tools.knee.plugin.compiler.utils.canonicalName
-import org.jetbrains.kotlin.backend.jvm.ir.propertyIfAccessor
 import org.jetbrains.kotlin.ir.declarations.*
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.name.FqName

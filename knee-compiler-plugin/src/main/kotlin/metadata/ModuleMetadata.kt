@@ -43,9 +43,11 @@ data class ModuleMetadata private constructor(
         fun read(module: IrClass, json: Json): ModuleMetadata? {
             @Suppress("UNCHECKED_CAST")
             val encoded = module.getAnnotation(AnnotationIds.KneeMetadata.asSingleFqName())
-                ?.getValueArgument(0)
-                ?.let { it as? IrConst<String> }
-                ?.value ?: return null
+                ?.arguments[0]
+                ?.let { it as? IrConst }
+                ?.value
+                ?.let { it as? String }
+                ?: return null
             return json.decodeFromString<ModuleMetadata>(encoded)
         }
     }
@@ -53,7 +55,7 @@ data class ModuleMetadata private constructor(
     fun write(module: IrClass, context: KneeContext) {
         val existingMetadataAnnotation = module.getAnnotation(AnnotationIds.KneeMetadata.asSingleFqName())
         check(existingMetadataAnnotation == null) {
-            "Module $module should not be annotated by @KneeMetadata(${existingMetadataAnnotation?.getValueArgument(0)?.dumpKotlinLike()})"
+            "Module $module should not be annotated by @KneeMetadata(${existingMetadataAnnotation?.arguments[0]?.dumpKotlinLike()})"
         }
 
         val metadataString = try {
@@ -68,7 +70,7 @@ data class ModuleMetadata private constructor(
             annotations = listOf(with(DeclarationIrBuilder(context.plugin, module.symbol)) {
                 val metadataConstructor = context.symbols.klass(AnnotationIds.KneeMetadata).constructors.single()
                 irCallConstructor(metadataConstructor, emptyList()).apply {
-                    putValueArgument(0, irString(metadataString))
+                    arguments[0] = irString(metadataString)
                 }
             })
         )

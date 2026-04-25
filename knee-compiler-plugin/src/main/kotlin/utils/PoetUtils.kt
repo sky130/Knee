@@ -26,6 +26,7 @@ fun IrClass.asTypeSpec(rename: ((String) -> String)? = null): TypeSpec.Builder {
             isCompanion -> TypeSpec.companionObjectBuilder(if (name == "Companion") null else name)
             else -> TypeSpec.objectBuilder(name)
         }
+
         ClassKind.INTERFACE -> TypeSpec.interfaceBuilder(name)
         ClassKind.ANNOTATION_CLASS -> TypeSpec.annotationBuilder(name)
         ClassKind.ENUM_ENTRY -> error("Enum entries ($this) can't become a TypeSpec.")
@@ -47,6 +48,7 @@ fun IrSimpleType.asTypeName(alreadyDescribedTypeParameters: MutableSet<IrTypePar
         is IrClassSymbol -> {
             asClassTypeName(alreadyDescribedTypeParameters)
         }
+
         is IrTypeParameterSymbol -> TypeVariableName(
             name = s.owner.name.asString(),
             bounds = when {
@@ -56,6 +58,7 @@ fun IrSimpleType.asTypeName(alreadyDescribedTypeParameters: MutableSet<IrTypePar
                     .map { it.asTypeName(alreadyDescribedTypeParameters) }
             }
         ).copy(nullable = nullability == SimpleTypeNullability.MARKED_NULLABLE)
+
         else -> error("Unexpected classifier: $s")
     }
 }
@@ -63,7 +66,8 @@ fun IrSimpleType.asTypeName(alreadyDescribedTypeParameters: MutableSet<IrTypePar
 private fun IrTypeArgument.asTypeName(alreadyDescribedTypeParameters: MutableSet<IrTypeParameterSymbol>): TypeName {
     return when (this) {
         is IrTypeProjection -> {
-            val simpleType = checkNotNull(type as? IrSimpleType) { "IrTypeArgument.type not a simple type: $type" }
+            val simpleType =
+                checkNotNull(type as? IrSimpleType) { "IrTypeArgument.type not a simple type: $type" }
             val invariant = simpleType.asTypeName(alreadyDescribedTypeParameters)
             when (this.variance) {
                 Variance.INVARIANT -> invariant
@@ -71,6 +75,7 @@ private fun IrTypeArgument.asTypeName(alreadyDescribedTypeParameters: MutableSet
                 Variance.OUT_VARIANCE -> WildcardTypeName.producerOf(outType = invariant)
             }
         }
+
         is IrStarProjection -> STAR
         else -> error("Should not happen? ${this::class.simpleName}")
     }
@@ -83,7 +88,11 @@ private fun IrSimpleType.asClassTypeName(alreadyDescribedTypeParameters: Mutable
     val className = ClassName.bestGuess(fqName.asString())
     return when (arguments.isEmpty()) {
         true -> className
-        else -> className.parameterizedBy(arguments.map { it.asTypeName(alreadyDescribedTypeParameters) })
+        else -> className.parameterizedBy(arguments.map {
+            it.asTypeName(
+                alreadyDescribedTypeParameters
+            )
+        })
     }.copy(nullable = isNullable())
 }
 
@@ -91,7 +100,8 @@ private fun IrSimpleType.asClassTypeName(alreadyDescribedTypeParameters: Mutable
 fun IrProperty.asPropertySpec(typeMapper: (IrSimpleType) -> IrSimpleType = { it }): PropertySpec.Builder {
     // NOTE: Could also add kmodifiers from visibility and modality
     val type = requireNotNull(backingField?.type ?: getter?.returnType)
-    val simpleType = checkNotNull(type as? IrSimpleType) { "IrProperty.type not a simple type: $type" }
+    val simpleType =
+        checkNotNull(type as? IrSimpleType) { "IrProperty.type not a simple type: $type" }
     val mappedType = typeMapper(simpleType)
     return PropertySpec.builder(codegenName.asString(), mappedType.asTypeName())
         .mutable(isVar)
@@ -117,6 +127,7 @@ fun DescriptorVisibility.asModifier(): KModifier {
                 ?.visibility
                 ?.asModifier() ?: KModifier.PRIVATE
         }
+
         else -> KModifier.INTERNAL
     }
     // K1
@@ -135,36 +146,39 @@ fun DescriptorVisibility.asModifier(): KModifier {
     } */
 }
 
-val TypeName.simpleName: String get() {
-    return when (this) {
-        is ClassName -> simpleName
-        is ParameterizedTypeName -> rawType.simpleName
-        is Dynamic -> error("Not possible") // JS dynamic type
-        is TypeVariableName -> error("Not possible") // describes generic named type parameter e.g. 'T : String'
-        is LambdaTypeName -> error("Not possible") // describes lambdas
-        is WildcardTypeName -> error("Not possible") // describes out String, in String, * ...
+val TypeName.simpleName: String
+    get() {
+        return when (this) {
+            is ClassName -> simpleName
+            is ParameterizedTypeName -> rawType.simpleName
+            is Dynamic -> error("Not possible") // JS dynamic type
+            is TypeVariableName -> error("Not possible") // describes generic named type parameter e.g. 'T : String'
+            is LambdaTypeName -> error("Not possible") // describes lambdas
+            is WildcardTypeName -> error("Not possible") // describes out String, in String, * ...
+        }
     }
-}
 
-val TypeName.canonicalName: String get() {
-    return when (this) {
-        is ClassName -> canonicalName
-        is ParameterizedTypeName -> rawType.canonicalName
-        is Dynamic, is LambdaTypeName, is TypeVariableName, is WildcardTypeName -> error("Not possible: ${this}")
+val TypeName.canonicalName: String
+    get() {
+        return when (this) {
+            is ClassName -> canonicalName
+            is ParameterizedTypeName -> rawType.canonicalName
+            is Dynamic, is LambdaTypeName, is TypeVariableName, is WildcardTypeName -> error("Not possible: ${this}")
+        }
     }
-}
 
 // Wrt canonicalName, this handles TypeVariableName.
 // That can appear when creating codegen function for generic interfaces, because we use
 // unsubstituted types in the base interface clone
-val TypeName.disambiguationName: String get() {
-    return when (this) {
-        is ClassName -> canonicalName
-        is ParameterizedTypeName -> rawType.canonicalName
-        is TypeVariableName -> "${if (isReified) "reified " else ""}$variance $name : ${bounds.map { it.disambiguationName }}"
-        is Dynamic, is LambdaTypeName, is WildcardTypeName -> error("Not possible: ${this}")
+val TypeName.disambiguationName: String
+    get() {
+        return when (this) {
+            is ClassName -> canonicalName
+            is ParameterizedTypeName -> rawType.canonicalName
+            is TypeVariableName -> "${if (isReified) "reified " else ""}$variance $name : ${bounds.map { it.disambiguationName }}"
+            is Dynamic, is LambdaTypeName, is WildcardTypeName -> error("Not possible: ${this}")
+        }
     }
-}
 
 /* val TypeName.packageName: String get() {
     return when (this) {
@@ -195,25 +209,27 @@ fun TypeName.copy(
 ): TypeName {
     return when (this) {
         is ClassName -> this
-        is ParameterizedTypeName ->  when {
+        is ParameterizedTypeName -> when {
             clearGenerics -> rawType
             wildcardGenerics -> copy(typeArguments = List(typeArguments.size) { STAR })
             else -> this
         }
+
         is Dynamic, is LambdaTypeName, is TypeVariableName, is WildcardTypeName -> error("Not possible")
     }
 }
 
 // We only support const kinds.
 fun IrValueParameter.defaultValueForCodegen(functionExpects: List<IrDeclarationWithName> = emptyList()): CodeBlock? {
-    val expression = (defaultValueFromThisOrSupertypes ?: defaultValueFromExpect(functionExpects) ?: return null).expression
-    if (expression is IrConst<*>) {
+    val expression = (defaultValueFromThisOrSupertypes ?: defaultValueFromExpect(functionExpects)
+    ?: return null).expression
+    if (expression is IrConst) {
         return when (val kind = expression.kind) {
             is IrConstKind.Null -> CodeBlock.of("null")
-            is IrConstKind.String -> CodeBlock.of("%S", kind.valueOf(expression))
-            is IrConstKind.Float -> CodeBlock.of("%LF", kind.valueOf(expression))
-            is IrConstKind.Long -> CodeBlock.of("%LL", kind.valueOf(expression))
-            else -> CodeBlock.of("%L", kind.valueOf(expression))
+            is IrConstKind.String -> CodeBlock.of("%S", expression.value)
+            is IrConstKind.Float -> CodeBlock.of("%LF", expression.value)
+            is IrConstKind.Long -> CodeBlock.of("%LL", expression.value)
+            else -> CodeBlock.of("%L", expression.value)
             // is IrConstKind.Boolean -> CodeBlock.of(kind.valueOf(expression).toString())
             // is IrConstKind.Int -> CodeBlock.of(kind.valueOf(expression).toString())
             // is IrConstKind.Double -> CodeBlock.of(kind.valueOf(expression).toString())
@@ -228,20 +244,29 @@ fun IrValueParameter.defaultValueForCodegen(functionExpects: List<IrDeclarationW
     return null
 }
 
-private val IrValueParameter.defaultValueFromThisOrSupertypes: IrExpressionBody? get() {
-    if (defaultValue != null) return defaultValue
-    val parent = parent as? IrSimpleFunction ?: return null
-    return parent.overriddenSymbols.asSequence()
-        .map { it.owner }
-        .mapNotNull { it.valueParameters.firstOrNull { it.name == name } }
-        .firstNotNullOfOrNull { it.defaultValueFromThisOrSupertypes }
-}
+private val IrValueParameter.defaultValueFromThisOrSupertypes: IrExpressionBody?
+    get() {
+        if (defaultValue != null) return defaultValue
+        val parent = parent as? IrSimpleFunction ?: return null
+        return parent.overriddenSymbols.asSequence()
+            .map { it.owner }
+            .mapNotNull {
+                it.parameters
+                    .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+                    .firstOrNull { it.name == name }
+            }
+            .firstNotNullOfOrNull { it.defaultValueFromThisOrSupertypes }
+    }
 
 
 private fun IrValueParameter.defaultValueFromExpect(functionExpects: List<IrDeclarationWithName>): IrExpressionBody? {
     return functionExpects.asSequence()
         .filterIsInstance<IrSimpleFunction>()
-        .mapNotNull { it.valueParameters.firstOrNull { it.name == name } }
+        .mapNotNull {
+            it.parameters
+                .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+                .firstOrNull { it.name == name }
+        }
         .firstNotNullOfOrNull { it.defaultValueFromThisOrSupertypes }
 }
 

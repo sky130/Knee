@@ -6,7 +6,7 @@ import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.ir.IrElement
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrEnumEntry
-import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
+import org.jetbrains.kotlin.ir.visitors.IrVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 
 class KneeEnum(
@@ -19,7 +19,7 @@ class KneeEnum(
     init {
         source.requireNotComplex(this, ClassKind.ENUM_CLASS)
         val entries = mutableListOf<IrEnumEntry>()
-        source.acceptChildrenVoid(object : IrElementVisitorVoid {
+        source.acceptChildrenVoid(object : IrVisitorVoid() {
             override fun visitElement(element: IrElement) = Unit
             override fun visitEnumEntry(declaration: IrEnumEntry) {
                 entries.add(declaration)

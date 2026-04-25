@@ -10,7 +10,7 @@ import org.jetbrains.kotlin.name.CallableId
 import org.jetbrains.kotlin.name.ClassId
 
 
-class KneeSymbols(private val plugin: IrPluginContext) {
+class KneeSymbols (private val plugin: IrPluginContext) {
 
     val builtIns: IrBuiltIns get() = plugin.irBuiltIns
 

@@ -69,7 +69,7 @@ val IrDeclarationWithName.codegenName get(): Name {
             ?: getAnnotation(AnnotationIds.KneeInterface)
             ?: return name
         val a = e.getValueArgument(Name.identifier("name")) ?: return name
-        val str = (a as IrConst<String>).value.takeIf { it.isNotEmpty() } ?: return name
+        val str = (a as IrConst).value?.let { it as? String }?.takeIf { it.isNotEmpty() } ?: return name
         return Name.identifier(str)
     }
     return name

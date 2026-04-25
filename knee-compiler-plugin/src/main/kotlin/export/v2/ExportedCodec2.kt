@@ -28,9 +28,9 @@ class ExportedCodec2(symbols: KneeSymbols, exportingModule: IrClass, exportedTyp
     private fun IrStatementsBuilder<*>.irGetAdapter(): IrExpression {
         return irCall(getAdapterFunction).apply {
             dispatchReceiver = irGetObject(moduleObject.symbol)
-            putTypeArgument(0, encodedType.knOrNull!!)
-            putTypeArgument(1, localIrType)
-            putValueArgument(0, irInt(typeId))
+            typeArguments[0] = encodedType.knOrNull!!
+            typeArguments[1] = localIrType
+            arguments[0] = irInt(typeId)
         }
     }
 
@@ -40,8 +40,8 @@ class ExportedCodec2(symbols: KneeSymbols, exportingModule: IrClass, exportedTyp
     ): IrExpression {
         return irCall(adapterDecodeFunction).apply {
             dispatchReceiver = irGetAdapter()
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, irGet(jni))
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = irGet(jni)
         }
     }
 
@@ -51,8 +51,8 @@ class ExportedCodec2(symbols: KneeSymbols, exportingModule: IrClass, exportedTyp
     ): IrExpression {
         return irCall(adapterEncodeFunction).apply {
             dispatchReceiver = irGetAdapter()
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, irGet(local))
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = irGet(local)
         }
     }
 

@@ -22,6 +22,7 @@ import org.jetbrains.kotlin.ir.builders.irBlockBody
 import org.jetbrains.kotlin.ir.builders.irReturn
 import org.jetbrains.kotlin.ir.builders.irReturnUnit
 import org.jetbrains.kotlin.ir.declarations.IrClass
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.util.defaultType
 import org.jetbrains.kotlin.ir.util.functions
 import org.jetbrains.kotlin.ir.util.hasAnnotation
@@ -71,9 +72,9 @@ object ExportAdapters {
             // Note: reverse = false but we don't relly know if the obj being converted is a param or return type
             // TODO: reconsider this reverse flag as it does not generalize properly to export specs
             val codecContext =
-                IrCodecContext(null, read.valueParameters[0], false, context.log)
+                IrCodecContext(null, read.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0], false, context.log)
             with(codec) {
-                +irReturn(irDecode(codecContext, read.valueParameters[1]))
+                +irReturn(irDecode(codecContext, read.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[1]))
             }
         }
 
@@ -81,9 +82,9 @@ object ExportAdapters {
             // Note: reverse = false but we don't relly know if the obj being converted is a param or return type
             // We should reconsider this reverse flag as it does not generalize properly to export specs
             val codecContext =
-                IrCodecContext(null, write.valueParameters[0], false, context.log)
+                IrCodecContext(null, write.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0], false, context.log)
             with(codec) {
-                +irReturn(irEncode(codecContext, write.valueParameters[1]))
+                +irReturn(irEncode(codecContext, write.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[1]))
             }
         }
     }

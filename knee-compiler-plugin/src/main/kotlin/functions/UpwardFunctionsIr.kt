@@ -5,6 +5,7 @@ import io.deepmedia.tools.knee.plugin.compiler.jni.JniType
 import io.deepmedia.tools.knee.plugin.compiler.codec.IrCodecContext
 import io.deepmedia.tools.knee.plugin.compiler.symbols.RuntimeIds.callStaticMethod
 import org.jetbrains.kotlin.ir.builders.*
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.declarations.IrVariable
 import org.jetbrains.kotlin.ir.expressions.IrExpression
@@ -31,18 +32,21 @@ object UpwardFunctionsIr {
         returnJniType: JniType,
         suspendInvoker: IrValueParameter? = null
     ): IrExpression {
-        val logPrefix = "ReverseFunctionsIr.irInvoke(${codecContext.functionSymbol!!.owner.fqNameWhenAvailable})"
+        val logPrefix =
+            "ReverseFunctionsIr.irInvoke(${codecContext.functionSymbol!!.owner.fqNameWhenAvailable})"
 
         // Take care of prefixes
         codecContext.logger.injectLog(this, "$logPrefix START")
         val prefixInputs = signature.extraParameters.map { (param, codec) ->
             codecContext.logger.injectLog(this, "$logPrefix ENCODING prefix $param with $codec")
             with(codec) {
-                irEncode(codecContext, local = when (param) {
-                    UpwardFunctionSignature.Extra.Receiver -> jreceiver
-                    UpwardFunctionSignature.Extra.SuspendInvoker -> suspendInvoker!!
-                    else -> error("Unexpected prefix parameter: $param")
-                })
+                irEncode(
+                    codecContext, local = when (param) {
+                        UpwardFunctionSignature.Extra.Receiver -> jreceiver
+                        UpwardFunctionSignature.Extra.SuspendInvoker -> suspendInvoker!!
+                        else -> error("Unexpected prefix parameter: $param")
+                    }
+                )
             }
         }
 
@@ -60,28 +64,33 @@ object UpwardFunctionsIr {
         return irCall(
             symbols.functions(function).single()
         ).apply {
-            extensionReceiver = irGet(codecContext.environment)
-            putValueArgument(0, irGet(jmethodOwner))
-            putValueArgument(1, irGet(jmethod))
-            putValueArgument(2, irVararg(
+            symbol.owner.parameters
+                .indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
+                .also {
+                    arguments[it] = irGet(codecContext.environment)
+                }
+            arguments[0] = irGet(jmethodOwner)
+            arguments[1] = irGet(jmethod)
+            arguments[2] = irVararg(
                 elementType = symbols.builtIns.anyType.makeNullable(),
                 values = prefixInputs + mappedInputs
-            ))
+            )
         }
     }
 
-    private val JniType.nameOfCallMethodFunction: String get() {
-        return when (this) {
-            is JniType.Void -> "Void"
-            is JniType.Object -> "Object"
-            is JniType.Int -> "Int"
-            is JniType.BooleanAsUByte -> "Boolean"
-            is JniType.Float -> "Float"
-            is JniType.Double -> "Double"
-            is JniType.Byte -> "Byte"
-            is JniType.Long -> "Long"
+    private val JniType.nameOfCallMethodFunction: String
+        get() {
+            return when (this) {
+                is JniType.Void -> "Void"
+                is JniType.Object -> "Object"
+                is JniType.Int -> "Int"
+                is JniType.BooleanAsUByte -> "Boolean"
+                is JniType.Float -> "Float"
+                is JniType.Double -> "Double"
+                is JniType.Byte -> "Byte"
+                is JniType.Long -> "Long"
+            }
         }
-    }
 
 
     /**
@@ -93,12 +102,16 @@ object UpwardFunctionsIr {
         codecContext: IrCodecContext,
         suspendToken: Boolean = false
     ): IrExpression {
-        val logPrefix = "ReverseFunctionsIr.irReceive(${codecContext.functionSymbol!!.owner.fqNameWhenAvailable})"
+        val logPrefix =
+            "ReverseFunctionsIr.irReceive(${codecContext.functionSymbol!!.owner.fqNameWhenAvailable})"
 
         val returnType = if (suspendToken) signature.suspendResult else signature.result
         if (!returnType.needsIrConversion) return rawValue
         return with(returnType) {
-            codecContext.logger.injectLog(this@irReceive, "$logPrefix DECODING return type with $returnType")
+            codecContext.logger.injectLog(
+                this@irReceive,
+                "$logPrefix DECODING return type with $returnType"
+            )
             irDecode(codecContext, irTemporary(rawValue, "result"))
         }
     }

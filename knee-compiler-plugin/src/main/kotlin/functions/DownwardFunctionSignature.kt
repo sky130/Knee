@@ -20,6 +20,7 @@ import io.deepmedia.tools.knee.plugin.compiler.symbols.RuntimeIds.KneeSuspendInv
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrFunction
 import org.jetbrains.kotlin.ir.declarations.IrModuleFragment
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.name.Name
@@ -113,7 +114,7 @@ class DownwardFunctionSignature(source: IrFunction, kind: Kind, context: KneeCon
         }
     }
 
-    val regularParameters: List<Pair<Name, Codec>> = source.valueParameters.map {
+    val regularParameters: List<Pair<Name, Codec>> = source.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }.map {
         it.name to context.mapper.get(it.type.simple("DownwardSignature.regularParams").concrete(kind.importInfo), it)
         /* it.name to when (val rawKind = it.rawKind) {
             null -> mapper.get(it.type, kind.importInfo)
@@ -151,7 +152,7 @@ class DownwardFunctionSignature(source: IrFunction, kind: Kind, context: KneeCon
      * One could just use type.asTypeName() but we must pass through the mapper for some edge scenarios,
      * like @KneeRaw-annotated declarations or other things.
      */
-    val unsubstitutedValueParametersForCodegen: List<Pair<Name, TypeName>> = source.valueParameters.map {
+    val unsubstitutedValueParametersForCodegen: List<Pair<Name, TypeName>> = source.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }.map {
         it.name to (runCatching { context.mapper.get(it.type, it) }.getOrNull()?.localCodegenType?.name ?: it.type.simple("DownwardSignature.valueParams").asTypeName())
     }
 
@@ -227,7 +228,7 @@ class DownwardFunctionSignature(source: IrFunction, kind: Kind, context: KneeCon
         fun name(includeAncestors: Boolean): Name {
 
             // when ancestors are required for higher disambiguation, we must include the importInfo id.
-            val suffix = source.valueParameters.makeFunctionNameDisambiguationSuffix()
+            val suffix = source.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }.makeFunctionNameDisambiguationSuffix()
             val prefix = kind.importInfo?.id?.takeIf { includeAncestors }
 
             fun mapper(name: String): String = "$" + when (kind) {

@@ -29,13 +29,13 @@ private class BooleanCodec(symbols: KneeSymbols) : Codec(symbols.builtIns.boolea
 
     override fun IrStatementsBuilder<*>.irDecode(irContext: IrCodecContext, jni: IrValueDeclaration): IrExpression {
         return irCall(decode).apply {
-            putValueArgument(0, irGet(jni))
+            arguments[0] = irGet(jni)
         }
     }
 
     override fun IrStatementsBuilder<*>.irEncode(irContext: IrCodecContext, local: IrValueDeclaration): IrExpression {
         return irCall(create).apply {
-            putValueArgument(0, irGet(local))
+            arguments[0] = irGet(local)
         }
     }
 

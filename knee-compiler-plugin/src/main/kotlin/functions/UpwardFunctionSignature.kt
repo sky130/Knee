@@ -15,6 +15,7 @@ import io.deepmedia.tools.knee.plugin.compiler.jni.JniSignature
 import io.deepmedia.tools.knee.plugin.compiler.jni.JniType
 import io.deepmedia.tools.knee.plugin.compiler.utils.*
 import io.deepmedia.tools.knee.plugin.compiler.symbols.RuntimeIds.KneeSuspendInvocation
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.declarations.IrValueParameter
 import org.jetbrains.kotlin.ir.symbols.IrClassSymbol
@@ -78,7 +79,7 @@ class UpwardFunctionSignature(
         }
     }
 
-    val regularParameters: List<Pair<Name, Codec>> = source.valueParameters.map {
+    val regularParameters: List<Pair<Name, Codec>> = source.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }.map {
         it.name to mapper.get(it.type.simple("UpwardSignature.regularParams").concrete(kind.importInfo), it)
     }
 
@@ -89,7 +90,7 @@ class UpwardFunctionSignature(
     ) {
         @Suppress("DefaultLocale")
         fun name(includeAncestors: Boolean): Name {
-            val suffix = source.valueParameters.makeFunctionNameDisambiguationSuffix()
+            val suffix = source.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }.makeFunctionNameDisambiguationSuffix()
 
             fun mapper(name: String): String = "_\$" + when {
                 source.isGetter -> "get${source.correspondingPropertySymbol!!.owner.name.asString().capitalizeAsciiOnly()}"

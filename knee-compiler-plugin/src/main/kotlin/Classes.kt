@@ -28,11 +28,13 @@ import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.types.KotlinType
 
 fun preprocessClass(klass: KneeClass, context: KneeContext) {
-    context.mapper.register(ClassCodec(
-        symbols = context.symbols,
-        irClass = klass.source,
-        irConstructors = klass.constructors.map { it.source.symbol },
-    ))
+    context.mapper.register(
+        ClassCodec(
+            symbols = context.symbols,
+            irClass = klass.source,
+            irConstructors = klass.constructors.map { it.source.symbol },
+        )
+    )
 }
 
 fun processClass(klass: KneeClass, context: KneeContext, codegen: KneeCodegen, initInfo: InitInfo) {
@@ -80,6 +82,7 @@ class ClassCodec(
         fun encodedTypeForFir(module: org.jetbrains.kotlin.descriptors.ModuleDescriptor): KotlinType {
             return module.builtIns.longType
         }
+
         fun encodedTypeForIr(symbols: KneeSymbols): JniType {
             return JniType.Long(symbols)
         }
@@ -93,18 +96,24 @@ class ClassCodec(
      * We must create a stable ref for this class so that it can be passed to the frontend.
      * In addition, if this class is owned by some other, we must add the stable ref to the owner list.
      */
-    override fun IrStatementsBuilder<*>.irEncode(irContext: IrCodecContext, local: IrValueDeclaration): IrExpression {
+    override fun IrStatementsBuilder<*>.irEncode(
+        irContext: IrCodecContext,
+        local: IrValueDeclaration
+    ): IrExpression {
         return irCall(encode).apply {
-            putValueArgument(0, irGet(local))
+            arguments[0] = irGet(local)
         }
     }
 
     // NOTE: in theory it is possible here to check whether this is a disposer and if it is,
     // release the stable refs here.
-    override fun IrStatementsBuilder<*>.irDecode(irContext: IrCodecContext, jni: IrValueDeclaration): IrExpression {
+    override fun IrStatementsBuilder<*>.irDecode(
+        irContext: IrCodecContext,
+        jni: IrValueDeclaration
+    ): IrExpression {
         return irCall(decode).apply {
-            putTypeArgument(0, localIrType)
-            putValueArgument(0, irGet(jni))
+            typeArguments[0] = localIrType
+            arguments[0] = irGet(jni)
         }
     }
 
@@ -113,7 +122,10 @@ class ClassCodec(
      * accepting the reference. If this is a constructor, we should instead call this(knee = $bridge),
      * which means returning bridge value with no edits.
      */
-    override fun CodeBlock.Builder.codegenDecode(codegenContext: CodegenCodecContext, jni: String): String {
+    override fun CodeBlock.Builder.codegenDecode(
+        codegenContext: CodegenCodecContext,
+        jni: String
+    ): String {
         val isConstructor = codegenContext.functionSymbol in irConstructors
         return when {
             isConstructor -> jni
@@ -124,7 +136,10 @@ class ClassCodec(
     /**
      * A JVM class must reach the native world. This means that we must pass the native reference instead.
      */
-    override fun CodeBlock.Builder.codegenEncode(codegenContext: CodegenCodecContext, local: String): String {
+    override fun CodeBlock.Builder.codegenEncode(
+        codegenContext: CodegenCodecContext,
+        local: String
+    ): String {
         return "$local.`${InstancesCodegen.HandleField}`"
     }
 }

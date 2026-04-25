@@ -17,6 +17,8 @@ import org.jetbrains.kotlin.gradle.plugin.*
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 import org.jetbrains.kotlin.konan.target.KonanTarget
+import java.util.Locale
+import java.util.Locale.getDefault
 
 @Suppress("unused")
 class KneePlugin : KotlinCompilerPluginSupportPlugin {
@@ -139,7 +141,13 @@ class KneePlugin : KotlinCompilerPluginSupportPlugin {
         // TODO: if there isn't, model dependencies separately. There's no reason why something like compileDebugKotlinAndroid
         //  should LINK the binaries. It should only compile the source code.
         val androidBuildType = buildType.toString().lowercase()
-        target.tasks.named("pre${androidBuildType.capitalize()}Build").configure {
+        target.tasks.named("pre${
+            androidBuildType.replaceFirstChar {
+                if (it.isLowerCase())
+                    it.titlecase(getDefault()) 
+                else it.toString()
+            }
+        }Build").configure {
             knee.log("[performConnection/3] [$buildType] task $name now depends on binary tasks ${binaries.map { it.linkTaskName }}")
             dependsOn(*binaries.map { it.linkTaskName }.toTypedArray())
         }

@@ -17,7 +17,7 @@ val IrClass.hasExport1Flag: Boolean get() {
 
     val a = e.getValueArgument(Name.identifier("exported")) ?: return false
     @Suppress("UNCHECKED_CAST")
-    return (a as? IrConst<Boolean>)?.value ?: false
+    return (a as? IrConst)?.value as? Boolean ?: false
 }
 
 val ClassDescriptor.hasExport1Flag: Boolean get() {

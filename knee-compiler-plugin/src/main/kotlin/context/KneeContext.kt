@@ -41,6 +41,6 @@ class KneeContext(
 
     val mapper by lazy { KneeMapper(this, json) }
 
-    val log = KneeLogger(log, verboseLogs, verboseRuntime)
+    val log = KneeLogger(this, log, verboseLogs, verboseRuntime)
 }
 

@@ -13,7 +13,7 @@ import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.ir.util.isPropertyAccessor
 import org.jetbrains.kotlin.ir.visitors.*
 
-class KneeCollector(module: IrModuleFragment) : IrElementVisitorVoid {
+class KneeCollector(module: IrModuleFragment) : IrVisitorVoid() {
 
 
     val initializers = mutableListOf<KneeInitializer>()

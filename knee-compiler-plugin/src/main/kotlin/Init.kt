@@ -23,12 +23,13 @@ import org.jetbrains.kotlin.ir.IrStatement
 import org.jetbrains.kotlin.ir.builders.*
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrProperty
 import org.jetbrains.kotlin.ir.expressions.*
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.ir.visitors.IrElementTransformerVoid
-import org.jetbrains.kotlin.ir.visitors.IrElementVisitorVoid
+import org.jetbrains.kotlin.ir.visitors.IrVisitorVoid
 import org.jetbrains.kotlin.ir.visitors.acceptChildrenVoid
 import org.jetbrains.kotlin.ir.visitors.transformChildrenVoid
 
@@ -62,7 +63,8 @@ fun processInit(
                 // 4. write dependency information in the module metadata (via annotation)
                 // https://github.com/androidx/androidx/blob/fec3b387ce47bad7682d01042c22d1913268c2bc/compose/compiler/compiler-hosted/src/main/java/androidx/compose/compiler/plugins/kotlin/lower/ComposerIntrinsicTransformer.kt#L62
                 val exportedTypes = mutableListOf<ExportedTypeInfo>()
-                val dependencyModules = module.collectDependencies() // do before transforming the super constructor!
+                val dependencyModules =
+                    module.collectDependencies() // do before transforming the super constructor!
                 module.source.transformChildrenVoid(object : IrElementTransformerVoid() {
 
                     // Grab the superclass constructor call. Will call visitDelegatingConstructorCall
@@ -72,15 +74,16 @@ fun processInit(
                     }
 
                     override fun visitDelegatingConstructorCall(expression: IrDelegatingConstructorCall): IrExpression {
-                        val isPublicConstructor = expression.symbol == context.symbols.modulePublicConstructor.symbol
+                        val isPublicConstructor =
+                            expression.symbol == context.symbols.modulePublicConstructor.symbol
                         if (isPublicConstructor) {
                             val builder = DeclarationIrBuilder(context.plugin, expression.symbol)
                             return builder.irCreateModule(
                                 isSuperclass = true,
                                 symbols = context.symbols,
                                 initInfo = info,
-                                varargDependencies = expression.getValueArgument(0),
-                                builderBlock = expression.getValueArgument(1)
+                                varargDependencies = expression.arguments[0],
+                                builderBlock = expression.arguments[1]
                             )
                         }
                         return super.visitDelegatingConstructorCall(expression)
@@ -88,11 +91,19 @@ fun processInit(
 
                     override fun visitCall(expression: IrCall): IrExpression {
                         if (context.useExport2 && expression.symbol == context.symbols.moduleBuilderExportFunction) {
-                            val exportedType = expression.getTypeArgument(0)!!.simple("export<Type>()")
-                            val exportedTypeInfo = ExportedTypeInfo(exportedTypes.size, context.mapper.get(exportedType))
+                            val exportedType =
+                                expression.typeArguments[0]!!.simple("export<Type>()")
+                            val exportedTypeInfo = ExportedTypeInfo(
+                                exportedTypes.size,
+                                context.mapper.get(exportedType)
+                            )
                             exportedTypes.add(exportedTypeInfo)
                             val builder = DeclarationIrBuilder(context.plugin, module.source.symbol)
-                            val replacement = builder.irExportAdapter(context, expression.dispatchReceiver!!, exportedTypeInfo)
+                            val replacement = builder.irExportAdapter(
+                                context,
+                                expression.dispatchReceiver!!,
+                                exportedTypeInfo
+                            )
                             //println("ORIGINAL MODULE_BUILDER_EXPORT = ${expression.dumpKotlinLike()}")
                             //println("REPLACEMENT MODULE_BUILDER_EXPORT = ${replacement.dumpKotlinLike()}")
                             return replacement
@@ -111,6 +122,7 @@ fun processInit(
                 codegen.makeCodegenModule(module, context, exportedTypes)
             }
         }
+
         is InitInfo.Initializer -> {
             // It's possible to have multiple initKnee() call, for example in a if-else branch.
             // We don't care, process all of them and inject a synthetic module
@@ -118,17 +130,19 @@ fun processInit(
                 // Goal: replace initKnee(ENV, dep1, dep2, dep3, ...) with initKnee(ENV, SyntheticModule(dep1, dep2, dep3))
                 // TODO: it is wrong to pass the expression symbol, it represents the initKnee() function in runtime module
                 val builder = DeclarationIrBuilder(context.plugin, initializer.expression.symbol)
-                val dependencies = initializer.expression.getValueArgument(1)
-                initializer.expression.putValueArgument(1, builder.irVararg(
+                val dependencies = initializer.expression.arguments[0]
+                initializer.expression.arguments[1] = builder.irVararg(
                     elementType = context.symbols.moduleClass.defaultType,
-                    values = listOf(builder.irCreateModule(
-                        isSuperclass = false,
-                        symbols = context.symbols,
-                        initInfo = info,
-                        varargDependencies = dependencies,
-                        builderBlock = null
-                    ))
-                ))
+                    values = listOf(
+                        builder.irCreateModule(
+                            isSuperclass = false,
+                            symbols = context.symbols,
+                            initInfo = info,
+                            varargDependencies = dependencies,
+                            builderBlock = null
+                        )
+                    )
+                )
             }
         }
     }
@@ -166,7 +180,14 @@ sealed class InitInfo {
         methodJniSignature: String
     ) {
         context.log.logMessage("registerNative: adding $methodName ($methodJniSignature) in ${container.jvmClassName}")
-        registerNativesEntries.add(RegisterNativesEntry(container, pointerProperty, methodName, methodJniSignature))
+        registerNativesEntries.add(
+            RegisterNativesEntry(
+                container,
+                pointerProperty,
+                methodName,
+                methodJniSignature
+            )
+        )
     }
 
     data class RegisterNativesEntry(
@@ -205,20 +226,20 @@ private fun DeclarationIrBuilder.irCreateModule(
         // val registerNativeContainers: List<String>
         // val registerNativeMethods: List<List<JniNativeMethod>>
         val groups = initInfo.registerNativesEntries.groupBy { it.container }.entries.map { it }
-        putValueArgument(0, irRegisterNativesContainers(symbols, groups.map { it.key }))
-        putValueArgument(1, irRegisterNativesMethods(symbols, groups.map { it.value }))
+        arguments[0] = irRegisterNativesContainers(symbols, groups.map { it.key })
+        arguments[1] = irRegisterNativesMethods(symbols, groups.map { it.value })
 
         // val preloadFqns: List<String>
-        putValueArgument(2, irPreloadFqns(symbols, initInfo.preloads))
+        arguments[2] = irPreloadFqns(symbols, initInfo.preloads)
 
         // val exceptions: List<SerializableException>
-        putValueArgument(3, irSerializableExceptions(symbols, initInfo.serializableExceptions))
+        arguments[3] = irSerializableExceptions(symbols, initInfo.serializableExceptions)
 
         // val dependencies: List<KneeModule>
         // val block: (KneeModuleBuilder.() -> Unit)?
         val dependencies = varargDependencies.varargElements<IrExpression>()
-        putValueArgument(4, irListOf(symbols, symbols.moduleClass.defaultType, dependencies))
-        putValueArgument(5, builderBlock ?: irNull())
+        arguments[4] = irListOf(symbols, symbols.moduleClass.defaultType, dependencies)
+        arguments[5] = builderBlock ?: irNull()
 
         // val dependencies: Array<out KneeModule>?
         // val block: (KneeModuleBuilder.() -> Unit)?
@@ -229,48 +250,74 @@ private fun DeclarationIrBuilder.irCreateModule(
     return constructorCall
 }
 
-private fun DeclarationIrBuilder.irListOf(symbols: KneeSymbols, type: IrType, contents: List<IrExpression>): IrExpression {
-    val listOf = symbols.functions(KotlinIds.listOf).single { it.owner.valueParameters.singleOrNull()?.isVararg == true }
+private fun DeclarationIrBuilder.irListOf(
+    symbols: KneeSymbols,
+    type: IrType,
+    contents: List<IrExpression>
+): IrExpression {
+    val listOf = symbols.functions(KotlinIds.listOf)
+        .single {
+            it.owner.parameters
+                .singleOrNull { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+                ?.isVararg == true
+        }
     return irCall(listOf).apply {
-        putTypeArgument(0, type)
-        putValueArgument(0, irVararg(type, contents))
+        typeArguments[0] = type
+        arguments[0] = irVararg(type, contents)
     }
 }
 
-private fun DeclarationIrBuilder.irPreloadFqns(symbols: KneeSymbols, preloads: Set<IrSimpleType>): IrExpression {
+private fun DeclarationIrBuilder.irPreloadFqns(
+    symbols: KneeSymbols,
+    preloads: Set<IrSimpleType>
+): IrExpression {
     return irListOf(symbols, symbols.builtIns.stringType, preloads.map {
         irString(CodegenType.from(it).jvmClassName)
     })
 }
 
-private fun DeclarationIrBuilder.irSerializableExceptions(symbols: KneeSymbols, classes: Set<IrClass>): IrExpression {
+private fun DeclarationIrBuilder.irSerializableExceptions(
+    symbols: KneeSymbols,
+    classes: Set<IrClass>
+): IrExpression {
     val type = symbols.klass(RuntimeIds.SerializableException)
     return irListOf(symbols, type.defaultType, classes.map {
         irCallConstructor(type.constructors.single(), emptyList()).apply {
-            putValueArgument(0, irString(it.classIdOrFail.asFqNameString())) // nativeFqn: String
-            putValueArgument(1, irString(CodegenType.from(it.defaultType).jvmClassName)) // jvmFqn: String
+            arguments[0] = irString(it.classIdOrFail.asFqNameString()) // nativeFqn: String
+            arguments[1] = irString(it.classIdOrFail.asFqNameString()) // jvmFqn: String
         }
     })
 }
 
-private fun DeclarationIrBuilder.irRegisterNativesContainers(symbols: KneeSymbols, containers: List<CodegenType>): IrExpression {
-    return irListOf(symbols, symbols.builtIns.stringType, containers.map { irString(it.jvmClassName) })
+private fun DeclarationIrBuilder.irRegisterNativesContainers(
+    symbols: KneeSymbols,
+    containers: List<CodegenType>
+): IrExpression {
+    return irListOf(
+        symbols,
+        symbols.builtIns.stringType,
+        containers.map { irString(it.jvmClassName) })
 }
 
-private fun DeclarationIrBuilder.irRegisterNativesMethods(symbols: KneeSymbols, entriesLists: List<List<InitInfo.RegisterNativesEntry>>): IrExpression {
+private fun DeclarationIrBuilder.irRegisterNativesMethods(
+    symbols: KneeSymbols,
+    entriesLists: List<List<InitInfo.RegisterNativesEntry>>
+): IrExpression {
     val methodClass = symbols.klass(JNINativeMethod)
     val methodConstructor = methodClass.constructors.single()
     val listOfMethods = symbols.builtIns.listClass.typeWith(methodClass.defaultType)
-    return irListOf(symbols,
+    return irListOf(
+        symbols,
         type = symbols.builtIns.listClass.typeWith(listOfMethods),
         contents = entriesLists.map { entries ->
-            irListOf(symbols,
+            irListOf(
+                symbols,
                 type = listOfMethods,
                 contents = entries.map { entry ->
                     irCallConstructor(methodConstructor, emptyList()).apply {
-                        putValueArgument(0, irString(entry.methodName))
-                        putValueArgument(1, irString(entry.methodJniSignature))
-                        putValueArgument(2, irCall(entry.pointerProperty.getter!!))
+                        arguments[0] = irString(entry.methodName)
+                        arguments[1] = irString(entry.methodJniSignature)
+                        arguments[2] = irCall(entry.pointerProperty.getter!!)
                     }
                 }
             )
@@ -286,11 +333,11 @@ private fun DeclarationIrBuilder.irExportAdapter(
     val function = context.symbols.moduleBuilderExportAdapterFunction
     return irCall(function).apply {
         dispatchReceiver = moduleBuilderInstance
-        putTypeArgument(0, exportedType.encodedType.kn)
-        putTypeArgument(1, exportedType.localIrType)
+        typeArguments[0] = exportedType.encodedType.kn
+        typeArguments[1] = exportedType.localIrType
         // dispatchReceiver = irGet(function.owner.parentAsClass.thisReceiver!!)
-        putValueArgument(0, irInt(exportedType.id))
-        putValueArgument(1, with(ExportAdapters2) { irCreateExportAdapter(exportedType, context) })
+        arguments[0] = irInt(exportedType.id)
+        arguments[1] = with(ExportAdapters2) { irCreateExportAdapter(exportedType, context) }
     }
 }
 
@@ -300,14 +347,15 @@ private fun DeclarationIrBuilder.irExportAdapter(
  */
 private fun KneeModule.collectDependencies(): List<IrClass> {
     var expr: IrExpression? = null
-    source.constructors.single().body!!.acceptChildrenVoid(object : IrElementVisitorVoid {
+    source.constructors.single().body!!.acceptChildrenVoid(object : IrVisitorVoid() {
         override fun visitElement(element: IrElement) {
             element.acceptChildrenVoid(this)
         }
+
         override fun visitDelegatingConstructorCall(expression: IrDelegatingConstructorCall) {
             check(expression.symbol.owner.constructedClass.classId == RuntimeIds.KneeModule) { "Wrong delegating constructor call: ${expression.dumpKotlinLike()}" }
-            check(expr == null) { "Found two delegating constructor call: ${expr}, ${expression}"}
-            expr = expression.getValueArgument(0)
+            check(expr == null) { "Found two delegating constructor call: ${expr}, ${expression}" }
+            expr = expression.arguments[0]
             super.visitDelegatingConstructorCall(expression)
         }
     })
@@ -319,41 +367,58 @@ private fun KneeModule.collectDependencies(): List<IrClass> {
  * We just need to retrieve and unwrap the second argument..
  */
 private fun KneeInitializer.collectDependencies(): List<IrClass> {
-    return expression.getValueArgument(1).varargElements<IrGetObjectValue>().map { it.symbol.owner }
+    return expression.arguments[1].varargElements<IrGetObjectValue>().map { it.symbol.owner }
 }
 
 /**
  * Vararg expressions can sometimes be null, if no items were provided.
  */
-private inline fun <reified T: IrExpression> IrExpression?.varargElements(): List<T> {
+private inline fun <reified T : IrExpression> IrExpression?.varargElements(): List<T> {
     if (this == null) return emptyList()
-    return (this as IrVararg).elements.map { it as? T ?: error("Vararg elements should be ${T::class}, was ${it::class}") }
+    return (this as IrVararg).elements.map {
+        it as? T ?: error("Vararg elements should be ${T::class}, was ${it::class}")
+    }
 }
 
-private fun KneeCodegen.makeCodegenModule(module: KneeModule, context: KneeContext, exportedTypes: List<ExportedTypeInfo>) {
+private fun KneeCodegen.makeCodegenModule(
+    module: KneeModule,
+    context: KneeContext,
+    exportedTypes: List<ExportedTypeInfo>
+) {
     val name = module.source.name.asString()
     val container = prepareContainer(module.source, null)
-    val moduleClass: ClassName = context.symbols.klass(RuntimeIds.KneeModule).owner.defaultType.asTypeName() as ClassName
+    val moduleClass: ClassName =
+        context.symbols.klass(RuntimeIds.KneeModule).owner.defaultType.asTypeName() as ClassName
     val adapterClass: ClassName = moduleClass.nestedClass("Adapter")
     val builder = TypeSpec.objectBuilder(name)
         .addModifiers(KModifier.PUBLIC)
         .let { if (verbose) it.addKdoc("knee:init") else it }
         .superclass(context.symbols.klass(RuntimeIds.KneeModule).owner.defaultType.asTypeName())
         .addProperty(
-            PropertySpec.builder("exportAdapters", MAP.parameterizedBy(INT, adapterClass.parameterizedBy(STAR, STAR)), KModifier.OVERRIDE)
-                .initializer(CodeBlock.builder()
-                    .addStatement("mapOf(")
-                    .withIndent {
-                        for (exportedType in exportedTypes) {
-                            add("${exportedType.id} to ")
-                            add(CodeBlock.builder().apply {
-                                with(ExportAdapters2) { codegenCreateExportAdapter(exportedType, context) }
-                            }.build())
-                            add(", ")
+            PropertySpec.builder(
+                "exportAdapters",
+                MAP.parameterizedBy(INT, adapterClass.parameterizedBy(STAR, STAR)),
+                KModifier.OVERRIDE
+            )
+                .initializer(
+                    CodeBlock.builder()
+                        .addStatement("mapOf(")
+                        .withIndent {
+                            for (exportedType in exportedTypes) {
+                                add("${exportedType.id} to ")
+                                add(CodeBlock.builder().apply {
+                                    with(ExportAdapters2) {
+                                        codegenCreateExportAdapter(
+                                            exportedType,
+                                            context
+                                        )
+                                    }
+                                }.build())
+                                add(", ")
+                            }
                         }
-                    }
-                    .addStatement(")")
-                    .build()
+                        .addStatement(")")
+                        .build()
                 )
                 .build()
         )

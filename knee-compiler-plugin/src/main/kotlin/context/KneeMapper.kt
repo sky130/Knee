@@ -13,7 +13,6 @@ import io.deepmedia.tools.knee.plugin.compiler.utils.asTypeName
 import io.deepmedia.tools.knee.plugin.compiler.utils.isPartOf
 import io.deepmedia.tools.knee.plugin.compiler.utils.simple
 import kotlinx.serialization.json.Json
-import org.jetbrains.kotlin.ir.backend.js.utils.valueArguments
 import org.jetbrains.kotlin.ir.declarations.IrAnnotationContainer
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.expressions.IrConst
@@ -21,6 +20,7 @@ import org.jetbrains.kotlin.ir.expressions.IrConstructorCall
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.types.*
 import org.jetbrains.kotlin.ir.util.*
+import org.jetbrains.kotlin.ir.util.isNullable
 
 class KneeMapper(
     private val context: KneeContext,
@@ -48,9 +48,9 @@ class KneeMapper(
     // This representation is the best one because it shows type parameters
     private val IrType.description get() = runCatching { this.simple("IrType.description").asTypeName() }.getOrElse { this }.toString()
 
-    private val IrConstructorCall.description get() = "${type.description} ${valueArguments.map { it?.description }}"
+    private val IrConstructorCall.description get() = "${type.description} ${arguments.map { it?.description }}"
 
-    private val IrExpression.description get() = if (this is IrConst<*>) this.value.toString() else this.toString()
+    private val IrExpression.description get() = if (this is IrConst) this.value.toString() else this.toString()
 
     private fun errorDescription(type: IrType): String {
         val klass = type.classOrNull?.owner
@@ -77,7 +77,7 @@ ${type.classOrNull?.owner?.annotations?.joinToString("\n") { "\t" + it.descripti
     fun get(type: IrType, useSiteAnnotations: IrAnnotationContainer? = null): Codec {
         val raw = useSiteAnnotations?.getAnnotation(AnnotationIds.KneeRaw)
         if (raw != null) {
-            val fqn = (raw.getValueArgument(0)!! as IrConst<String>).value
+            val fqn = (raw.arguments[0]!! as IrConst).value as String
             val jobject = JniType.Object(context.symbols, CodegenType.from(fqn))
             require(jobject.kn.makeNullable() == type.makeNullable()) {
                 "@KneeRaw(${fqn}) should be applied on a parameter of type 'jobject' or similar CPointer type alias."

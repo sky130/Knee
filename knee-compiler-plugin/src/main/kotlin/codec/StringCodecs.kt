@@ -26,15 +26,15 @@ private class StringCodec(symbols: KneeSymbols) : Codec(
 
     override fun IrStatementsBuilder<*>.irDecode(irContext: IrCodecContext, jni: IrValueDeclaration): IrExpression {
         return irCall(decode).apply {
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, irGet(jni))
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = irGet(jni)
         }
     }
 
     override fun IrStatementsBuilder<*>.irEncode(irContext: IrCodecContext, local: IrValueDeclaration): IrExpression {
         return irCall(encode).apply {
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, irGet(local))
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = irGet(local)
         }
     }
 

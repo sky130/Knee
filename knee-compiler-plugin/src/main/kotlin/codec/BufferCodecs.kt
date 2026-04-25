@@ -12,6 +12,7 @@ import org.jetbrains.kotlin.ir.builders.IrStatementsBuilder
 import org.jetbrains.kotlin.ir.builders.irCall
 import org.jetbrains.kotlin.ir.builders.irCallConstructor
 import org.jetbrains.kotlin.ir.builders.irGet
+import org.jetbrains.kotlin.ir.declarations.IrParameterKind
 import org.jetbrains.kotlin.ir.declarations.IrValueDeclaration
 import org.jetbrains.kotlin.ir.expressions.IrExpression
 import org.jetbrains.kotlin.ir.types.IrSimpleType
@@ -46,7 +47,7 @@ private class BufferCodec(
 
     private val objGetter = localIrType.classOrNull!!.getPropertyGetter("obj")!!
     private val createBuffer = localIrType.classOrNull!!.constructors.single {
-        val params = it.owner.valueParameters
+        val params = it.owner.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
         params.size == 2 && params[1].type == symbols.typeAliasUnwrapped(PlatformIds.jobject)
     }
 
@@ -59,8 +60,8 @@ private class BufferCodec(
 
     override fun IrStatementsBuilder<*>.irDecode(irContext: IrCodecContext, jni: IrValueDeclaration): IrExpression {
         return irCallConstructor(createBuffer, emptyList()).apply {
-            putValueArgument(0, irGet(irContext.environment))
-            putValueArgument(1, irGet(jni))
+            arguments[0] = irGet(irContext.environment)
+            arguments[1] = irGet(jni)
         }
     }
 
