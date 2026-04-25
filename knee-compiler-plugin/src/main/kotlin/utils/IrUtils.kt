@@ -86,6 +86,7 @@ fun IrDeclarationContainer.addSimpleProperty(
         backingField = factory.buildField {
             isStatic = parent is IrFile || (parent is IrDeclaration && parent.isFileClass) // very important
             origin = IrDeclarationOrigin.PROPERTY_BACKING_FIELD
+            visibility = DescriptorVisibilities.PRIVATE
             this.name = name
             this.type = type
         }.apply {

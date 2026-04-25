@@ -130,7 +130,7 @@ fun processInit(
                 // Goal: replace initKnee(ENV, dep1, dep2, dep3, ...) with initKnee(ENV, SyntheticModule(dep1, dep2, dep3))
                 // TODO: it is wrong to pass the expression symbol, it represents the initKnee() function in runtime module
                 val builder = DeclarationIrBuilder(context.plugin, initializer.expression.symbol)
-                val dependencies = initializer.expression.arguments[0]
+                val dependencies = initializer.expression.arguments[1]
                 initializer.expression.arguments[1] = builder.irVararg(
                     elementType = context.symbols.moduleClass.defaultType,
                     values = listOf(
@@ -375,7 +375,8 @@ private fun KneeInitializer.collectDependencies(): List<IrClass> {
  */
 private inline fun <reified T : IrExpression> IrExpression?.varargElements(): List<T> {
     if (this == null) return emptyList()
-    return (this as IrVararg).elements.map {
+    val irVararg = this as? IrVararg ?: error("Expected IrVararg but got ${this::class.simpleName}. Make sure you are not using spread operators (*) in knee functions.")
+    return irVararg.elements.map {
         it as? T ?: error("Vararg elements should be ${T::class}, was ${it::class}")
     }
 }
