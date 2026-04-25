@@ -10,6 +10,7 @@ import io.deepmedia.tools.knee.plugin.compiler.utils.asPropertySpec
 import io.deepmedia.tools.knee.plugin.compiler.utils.asTypeSpec
 import io.deepmedia.tools.knee.plugin.compiler.utils.canonicalName
 import org.jetbrains.kotlin.ir.declarations.*
+import org.jetbrains.kotlin.ir.declarations.impl.IrClassImpl
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.name.FqName
 import java.io.File
@@ -52,7 +53,12 @@ class KneeCodegen(private val context: KneeContext, val root: File, val verbose:
         // irHierarchy is a list which goes from the parent of declaration up until the file
         // [parentOfDeclaration, ... , ... , declarationFile]
         // We will then go from last to first and add all needed CodegenDeclarations
-        var candidate: CodegenDeclaration<*> = file((irHierarchy.removeLast() as IrFile).packageFqName.asString())
+        val packageFqName = when (val last = irHierarchy.removeLast()) {
+            is IrClass -> last.packageFqName
+            is IrFile -> last.packageFqName
+            else -> null
+        } ?: error("Declaration parent is not an IrClass or IrFile: $declaration")
+        var candidate: CodegenDeclaration<*> = file(packageFqName.asString())
         
         while (irHierarchy.isNotEmpty()) {
             val irParent = irHierarchy.removeLast()
