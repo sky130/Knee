@@ -45,48 +45,80 @@ import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.types.KotlinType
 
 fun preprocessInterface(interface_: KneeInterface, context: KneeContext) {
-    context.log.logMessage("preprocessInterface(${interface_.source.name}), owned = ${interface_.source.isPartOf(context.module)}")
+    context.log.logMessage(
+        "preprocessInterface(${interface_.source.name}), owned = ${
+            interface_.source.isPartOf(
+                context.module
+            )
+        }"
+    )
     interface_.makeIrImplementation(context)
-    context.mapper.register(InterfaceCodec(
-        context = context,
-        interfaceClass = interface_.source,
-        interfaceImplClass = interface_.irImplementation,
-        importInfo = interface_.importInfo
-    ))
+    context.mapper.register(
+        InterfaceCodec(
+            context = context,
+            interfaceClass = interface_.source,
+            interfaceImplClass = interface_.irImplementation,
+            importInfo = interface_.importInfo
+        )
+    )
 }
 
-fun processInterface(interface_: KneeInterface, context: KneeContext, codegen: KneeCodegen, initInfo: InitInfo) {
-    context.log.logMessage("processInterface(${interface_.source.name}), owned = ${interface_.source.isPartOf(context.module)}")
+fun processInterface(
+    interface_: KneeInterface,
+    context: KneeContext,
+    codegen: KneeCodegen,
+    initInfo: InitInfo
+) {
+    context.log.logMessage(
+        "processInterface(${interface_.source.name}), owned = ${
+            interface_.source.isPartOf(
+                context.module
+            )
+        }"
+    )
     if (interface_.source.isPartOf(context.module)) {
         interface_.makeCodegenClone(codegen)
     }
     interface_.makeCodegenImplementation(codegen, context)
     interface_.makeIrImplementationContents(context)
     // Generics should not matter here because we just findClass() the FQN
-    initInfo.preload(listOf(
-        interface_.source.defaultType,
-        interface_.irImplementation.defaultType
-    ))
+    initInfo.preload(
+        listOf(
+            interface_.source.defaultType,
+            interface_.irImplementation.defaultType
+        )
+    )
 
     run {
 
         // Trick so that we don't have to pass the dispatch receiver from the function we are building.
         // This is not 100% safe, it would probably fail in nested scopes e.g. inside irLambda.
-        fun IrBuilderWithScope.irThis() = irGet((scope.scopeOwnerSymbol as IrSimpleFunctionSymbol).owner.dispatchReceiverParameter!!)
+        fun IrBuilderWithScope.irThis() =
+            irGet((scope.scopeOwnerSymbol as IrSimpleFunctionSymbol).owner.dispatchReceiverParameter!!)
 
         val utilitySuperClass = context.symbols.klass(JvmInterfaceWrapper).owner
-        val virtualMachine = utilitySuperClass.findDeclaration<IrProperty> { it.name.asString() == "virtualMachine" }!!.getter!!
-        val methodOwner = utilitySuperClass.findDeclaration<IrProperty> { it.name.asString() == "methodOwnerClass" }!!.getter!!
-        val jvmInterfaceObject = utilitySuperClass.findDeclaration<IrProperty> { it.name.asString() == "jvmInterfaceObject" }!!.getter!!
-        val methodFromSignature = utilitySuperClass.findDeclaration<IrSimpleFunction> { it.name.asString() == "method" }!!
+        val virtualMachine =
+            utilitySuperClass.findDeclaration<IrProperty> { it.name.asString() == "virtualMachine" }!!.getter!!
+        val methodOwner =
+            utilitySuperClass.findDeclaration<IrProperty> { it.name.asString() == "methodOwnerClass" }!!.getter!!
+        val jvmInterfaceObject =
+            utilitySuperClass.findDeclaration<IrProperty> { it.name.asString() == "jvmInterfaceObject" }!!.getter!!
+        val methodFromSignature =
+            utilitySuperClass.findDeclaration<IrSimpleFunction> { it.name.asString() == "method" }!!
 
-        interface_.irGetVirtualMachine = { irCall(virtualMachine).apply { dispatchReceiver = irThis() }}
-        interface_.irGetMethodOwner = { irCall(methodOwner).apply { dispatchReceiver = irThis() }}
-        interface_.irGetJvmObject = { irCall(jvmInterfaceObject).apply { dispatchReceiver = irThis() }}
-        interface_.irGetMethod = { signature -> irCall(methodFromSignature).apply {
-            dispatchReceiver = irThis()
-            arguments[0] =  irString(signature.jniInfo.name(false).asString() + "::" + signature.jniInfo.signature)
-        }}
+        interface_.irGetVirtualMachine =
+            { irCall(virtualMachine).apply { dispatchReceiver = irThis() } }
+        interface_.irGetMethodOwner = { irCall(methodOwner).apply { dispatchReceiver = irThis() } }
+        interface_.irGetJvmObject =
+            { irCall(jvmInterfaceObject).apply { dispatchReceiver = irThis() } }
+        interface_.irGetMethod = { signature ->
+            irCall(methodFromSignature).apply {
+                dispatchReceiver = irThis()
+                arguments[0] = irString(
+                    signature.jniInfo.name(false).asString() + "::" + signature.jniInfo.signature
+                )
+            }
+        }
     }
 
     if (!context.useExport2) {
@@ -102,7 +134,12 @@ fun processInterface(interface_: KneeInterface, context: KneeContext, codegen: K
  *   We use addChildIfNeeded for this.
  */
 private fun KneeInterface.makeCodegenClone(codegen: KneeCodegen) {
-    val container = codegen.prepareContainer(source, importInfo)
+    val container =
+        runCatching {
+            codegen.containerForDeclaration(source, importInfo)
+        }.recover {
+            codegen.prepareContainer(source, importInfo)
+        }.getOrThrow()
     val builder = when {
         source.isFun -> TypeSpec.funInterfaceBuilder(source.name.asString())
         else -> TypeSpec.interfaceBuilder(source.name.asString())
@@ -123,7 +160,12 @@ private fun KneeInterface.makeCodegenClone(codegen: KneeCodegen) {
 private fun KneeInterface.makeCodegenImplementation(codegen: KneeCodegen, context: KneeContext) {
     val name = source.codegenName.asInterfaceName(importInfo).asString()
     val exported1 = !context.useExport2 && source.hasExport1Flag
-    val container = codegen.prepareContainer(source, importInfo)
+    val container =
+        runCatching {
+            codegen.containerForDeclaration(source, importInfo)
+        }.recover {
+            codegen.prepareContainer(source, importInfo)
+        }.getOrThrow()
     val builder = TypeSpec.classBuilder(name).apply {
         when {
             exported1 -> addModifiers(KModifier.PUBLIC)
@@ -156,7 +198,8 @@ private fun KneeInterface.makeIrImplementation(context: KneeContext) {
         this.name = source.name.asInterfaceName(importInfo)
     }.also { wrapperClass ->
         wrapperClass.parent = container
-        wrapperClass.superTypes = listOf(sourceConcreteType, superClass.typeWith(sourceConcreteType))
+        wrapperClass.superTypes =
+            listOf(sourceConcreteType, superClass.typeWith(sourceConcreteType))
         wrapperClass.createThisReceiverParameter() // <this> receiver
     }
     container.addChild(wrapperClass)
@@ -187,11 +230,14 @@ private fun KneeInterface.makeIrImplementationContents(context: KneeContext) {
                 // context.log.injectLog(this, CodegenType.from(irImplementation.defaultType).jvmClassName)
 
                 +irDelegatingConstructorCall(superConstructor).apply {
-                    arguments[0] = irGet(constructor.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0])
-                    arguments[1] = irGet(constructor.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[1])
+                    arguments[0] =
+                        irGet(constructor.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[0])
+                    arguments[1] =
+                        irGet(constructor.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }[1])
                     // Class FQNs will be passed to jni.findClass, so handle dollar sign and codegen renames correctly
                     arguments[2] = irString(CodegenType.from(sourceConcreteType).jvmClassName)
-                    arguments[3] = irString(CodegenType.from(irImplementation.defaultType).jvmClassName)
+                    arguments[3] =
+                        irString(CodegenType.from(irImplementation.defaultType).jvmClassName)
 
                     // Name and signature of the companion object function, alternated
                     val allExportedFunctions = upwardFunctions +
@@ -200,7 +246,12 @@ private fun KneeInterface.makeIrImplementationContents(context: KneeContext) {
                     arguments[4] = irVararg(
                         elementType = context.symbols.builtIns.stringType,
                         values = allExportedFunctions.flatMap {
-                            val signature = UpwardFunctionSignature(it.source, it.kind, context.symbols, context.mapper)
+                            val signature = UpwardFunctionSignature(
+                                it.source,
+                                it.kind,
+                                context.symbols,
+                                context.mapper
+                            )
                             listOf(
                                 irString(signature.jniInfo.name(false).asString()),
                                 irString(signature.jniInfo.signature)
@@ -209,7 +260,12 @@ private fun KneeInterface.makeIrImplementationContents(context: KneeContext) {
                     )
                 }
                 context.log.injectLog(this, "Called super constructor, init self")
-                +IrInstanceInitializerCallImpl(startOffset, endOffset, irImplementation.symbol, context.symbols.builtIns.unitType)
+                +IrInstanceInitializerCallImpl(
+                    startOffset,
+                    endOffset,
+                    irImplementation.symbol,
+                    context.symbols.builtIns.unitType
+                )
             }
         }
     }
@@ -258,7 +314,10 @@ class InterfaceCodec(
      * - if interface was originally JVM, return JVM!
      * - otherwise create a KN StableRef and return it as encoded long
      */
-    override fun IrStatementsBuilder<*>.irEncode(irContext: IrCodecContext, local: IrValueDeclaration): IrExpression {
+    override fun IrStatementsBuilder<*>.irEncode(
+        irContext: IrCodecContext,
+        local: IrValueDeclaration
+    ): IrExpression {
         return irCall(encode).apply {
             typeArguments[0] = localIrType
             arguments[0] = irGet(irContext.environment)
@@ -272,7 +331,10 @@ class InterfaceCodec(
      * - otherwise it's a jobject with a reference to a JVM interface.
      *   In this case we should create a FooImpl instance using the generated impl class.
      */
-    override fun IrStatementsBuilder<*>.irDecode(irContext: IrCodecContext, jni: IrValueDeclaration): IrExpression {
+    override fun IrStatementsBuilder<*>.irDecode(
+        irContext: IrCodecContext,
+        jni: IrValueDeclaration
+    ): IrExpression {
         val logPrefix = "InterfaceCodec(${localCodegenType.name.simpleName})"
         irContext.logger.injectLog(this, "$logPrefix DECODING")
         return irCall(decode).apply {
@@ -285,13 +347,20 @@ class InterfaceCodec(
                 valueParameters = emptyList(),
                 returnType = interfaceImplClass.defaultType,
                 content = {
-                    irContext.logger.injectLog(this, "$logPrefix INSTANTIATING the implementation class")
+                    irContext.logger.injectLog(
+                        this,
+                        "$logPrefix INSTANTIATING the implementation class"
+                    )
                     // irContext.logger.injectLog(this, irContext.environment)
                     // irContext.logger.injectLog(this, jni)
-                    +irReturn(irCallConstructor(interfaceImplClass.primaryConstructor!!.symbol, emptyList()).apply {
-                        arguments[0] = irGet(irContext.environment) // environment
-                        arguments[1] = irGet(jni) // jobject
-                    })
+                    +irReturn(
+                        irCallConstructor(
+                            interfaceImplClass.primaryConstructor!!.symbol,
+                            emptyList()
+                        ).apply {
+                            arguments[0] = irGet(irContext.environment) // environment
+                            arguments[1] = irGet(jni) // jobject
+                        })
                 }
             )
         }
@@ -303,7 +372,10 @@ class InterfaceCodec(
      *   In this case we should create an instance of "KneeFoo" passing the address to the constructor
      * - An actual interface. This happens if the interface was originally created in Java.
      */
-    override fun CodeBlock.Builder.codegenDecode(codegenContext: CodegenCodecContext, jni: String): String {
+    override fun CodeBlock.Builder.codegenDecode(
+        codegenContext: CodegenCodecContext,
+        jni: String
+    ): String {
         val fqn = localCodegenType.name
         val impl = interfaceImplClass.defaultType.asTypeName()
         /* val impl = fqn
@@ -318,13 +390,19 @@ class InterfaceCodec(
         return "${jni}_"
     }
 
-    override fun CodeBlock.Builder.codegenEncode(codegenContext: CodegenCodecContext, local: String): String {
+    override fun CodeBlock.Builder.codegenEncode(
+        codegenContext: CodegenCodecContext,
+        local: String
+    ): String {
         // Special case during JVM to KN functions when the interface is the receiver.
         // It's not fundamental but avoids some warnings in generated code (this is Type where this is obviously type)
         if (local == "this") return "$local.`${InstancesCodegen.HandleField}`"
 
         val impl = interfaceImplClass.defaultType.asTypeName()
-        addStatement("val ${local}_: Any = ($local as? %T)?.`${InstancesCodegen.HandleField}` ?: $local", impl)
+        addStatement(
+            "val ${local}_: Any = ($local as? %T)?.`${InstancesCodegen.HandleField}` ?: $local",
+            impl
+        )
         return "${local}_"
     }
 }

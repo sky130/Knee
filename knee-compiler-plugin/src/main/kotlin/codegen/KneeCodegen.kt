@@ -39,6 +39,37 @@ class KneeCodegen(private val context: KneeContext, val root: File, val verbose:
             }
     }
 
+    fun containerForDeclaration(
+        declaration: IrDeclaration,
+        importInfo: ImportInfo?,
+        detectPropertyAccessors: Boolean = true,
+        createCompanionObject: Boolean = false,
+    ): CodegenDeclaration<*> {
+        val classHierarchy = mutableListOf<IrClass>()
+        var current: IrDeclarationParent? = declaration.parent
+        while (current != null && current !is IrFile) {
+            if (current is IrClass) {
+                classHierarchy.add(current)
+            }
+            current = (current as? IrDeclaration)?.parent
+        }
+        val irFile = current ?: error("Declaration not inside a file: $declaration")
+
+        var container: CodegenDeclaration<*> = file(irFile.packageFqName.asString())
+        for (irClass in classHierarchy.reversed()) {
+            container = container.addChildIfNeeded(CodegenClass(irClass.asTypeSpec()))
+        }
+
+        if (createCompanionObject && container is CodegenClass && !container.isCompanion) {
+            container = container.addChildIfNeeded(CodegenClass(TypeSpec.companionObjectBuilder()))
+        }
+        if (detectPropertyAccessors && (declaration.isSetter || declaration.isGetter)) {
+            val irProperty = (declaration as IrFunction).propertyIfAccessor as IrProperty
+            container = container.addChildIfNeeded(CodegenProperty(irProperty.asPropertySpec()))
+        }
+        return container
+    }
+
     fun prepareContainer(
         declaration: IrDeclaration,
         importInfo: ImportInfo?,
@@ -59,7 +90,7 @@ class KneeCodegen(private val context: KneeContext, val root: File, val verbose:
             else -> null
         } ?: error("Declaration parent is not an IrClass or IrFile: $declaration")
         var candidate: CodegenDeclaration<*> = file(packageFqName.asString())
-        
+
         while (irHierarchy.isNotEmpty()) {
             val irParent = irHierarchy.removeLast()
             require(irParent is IrClass) { "Declaration parent is not an IrClass: $irParent (import=$importInfo all=${irHierarchy})" }
@@ -79,7 +110,7 @@ class KneeCodegen(private val context: KneeContext, val root: File, val verbose:
         }
         return candidate
     }
-    
+
     /* fun containerOf(
         declaration: IrDeclaration,
         importInfo: ImportInfo?,
