@@ -60,9 +60,11 @@ class CodegenFile(spec: FileSpec.Builder) : CodegenDeclaration<FileSpec.Builder>
 
 class CodegenFunction(spec: FunSpec.Builder, val isPrimaryConstructor: Boolean = false) : CodegenDeclaration<FunSpec.Builder>(spec) {
     override val uid by lazy {
-        "Fun(${spec.build().name}, ${spec.parameters.joinToString { parameterSpec ->  
+        val functionName = spec.build().name
+        val parameters = spec.parameters.joinToString { parameterSpec ->
             parameterSpec.type.disambiguationName
-        }})"
+        }
+        "Fun($functionName, $parameters)"
     }
 
     override val modifiers get() = spec.modifiers

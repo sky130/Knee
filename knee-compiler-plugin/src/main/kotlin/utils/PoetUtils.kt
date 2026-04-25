@@ -174,7 +174,12 @@ val TypeName.disambiguationName: String
     get() {
         return when (this) {
             is ClassName -> canonicalName
-            is ParameterizedTypeName -> rawType.canonicalName
+            is ParameterizedTypeName -> rawType.canonicalName +
+                    typeArguments.joinToString(
+                        separator = ",",
+                        prefix = "<",
+                        postfix = ">",
+                    ) { it.disambiguationName }
             is TypeVariableName -> "${if (isReified) "reified " else ""}$variance $name : ${bounds.map { it.disambiguationName }}"
             is Dynamic, is LambdaTypeName, is WildcardTypeName -> error("Not possible: ${this}")
         }
