@@ -3,12 +3,13 @@ package io.deepmedia.tools.knee.plugin.compiler.import
 import com.squareup.kotlinpoet.TypeVariableName
 import io.deepmedia.tools.knee.plugin.compiler.utils.asTypeName
 import io.deepmedia.tools.knee.plugin.compiler.utils.simple
-import org.jetbrains.kotlin.backend.common.lower.parents
-import org.jetbrains.kotlin.ir.IrBuiltIns
-import org.jetbrains.kotlin.ir.builders.declarations.buildClass
-import org.jetbrains.kotlin.ir.declarations.*
-import org.jetbrains.kotlin.ir.types.*
-import org.jetbrains.kotlin.ir.util.*
+import org.jetbrains.kotlin.ir.declarations.IrDeclarationWithName
+import org.jetbrains.kotlin.ir.declarations.IrFile
+import org.jetbrains.kotlin.ir.types.IrSimpleType
+import org.jetbrains.kotlin.ir.types.IrTypeSubstitutor
+import org.jetbrains.kotlin.ir.types.classOrNull
+import org.jetbrains.kotlin.ir.types.typeOrNull
+import org.jetbrains.kotlin.ir.util.file
 
 class ImportInfo(
     val type: IrSimpleType,

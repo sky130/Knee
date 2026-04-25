@@ -10,7 +10,7 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import java.io.File
 
 @OptIn(ExperimentalCompilerApi::class)
-class KneeComponentRegistrar : CompilerPluginRegistrar() {
+class KneeComponentRegistrar(override val pluginId: String) : CompilerPluginRegistrar() {
     override fun ExtensionStorage.registerExtensions(configuration: CompilerConfiguration) {
         if (configuration[KneeCommandLineProcessor.KneeEnabled] == false) return
         val logs = configuration[CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY]!!

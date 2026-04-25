@@ -128,7 +128,19 @@ private fun KneeUpwardFunction.makeIr(context: KneeContext, signature: UpwardFun
         // Configure value parameters. First option is 'copyParameterDeclarationsFrom(source)'
         // but that copies type parameters too, fails for generics. We have concrete types.
         // Use the import susbstitution map instead, or TODO: use signature value parameters
-        copyValueParametersFrom(source, kind.importInfo?.substitutionMap ?: emptyMap())
+        // copyValueParametersFrom(source, kind.importInfo?.substitutionMap ?: emptyMap())
+        
+        parameters = source.parameters.map { sourceParam ->
+            // Find the matching parameter and its resolved codec from the signature
+            val codec = signature.regularParameters.find { it.first == sourceParam }?.second
+
+            // Copy the source parameter to the current function, replacing the type with the concrete type (localIrType) resolved by the codec
+            // If not found in the signature (e.g., DispatchReceiver), fall back to the original type
+            sourceParam.copyTo(
+                irFunction = this,
+                type = codec?.localIrType ?: sourceParam.type
+            )
+        }
 
         // This function overrides the source function
         // Could also += source.overriddenSymbols, not sure if needed, we're not doing it elsewhere
