@@ -71,9 +71,11 @@ fun invokeCallbackSetCounter(callback: Callback, value: UInt) {
     callback.counter = value
 }
 
+@KneeClass
 class Outer {
     @KneeInterface
     interface Inner {
+        @Knee
         var value: Int
     }
 }
