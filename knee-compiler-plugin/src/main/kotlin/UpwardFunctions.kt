@@ -57,7 +57,7 @@ private fun KneeUpwardFunction.makeCodegen(
         .builder(signature.jniInfo.name(includeAncestors = false).asString())
         .addModifiers(KModifier.PRIVATE)
         // Only members in named objects and companion objects can be annotated with '@JvmStatic'.
-        // .addAnnotation(ClassName.bestGuess("kotlin.jvm.JvmStatic"))
+        .addAnnotation(ClassName.bestGuess("kotlin.jvm.JvmStatic"))
         .returns((if (signature.isSuspend) signature.suspendResult else signature.result).encodedType.jvmOrNull?.name ?: UNIT)
 
     // Parameters
