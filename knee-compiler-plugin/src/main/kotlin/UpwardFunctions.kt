@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.ir.builders.*
 import org.jetbrains.kotlin.ir.builders.declarations.addFunction
 import org.jetbrains.kotlin.ir.builders.declarations.addValueParameter
 import org.jetbrains.kotlin.ir.declarations.*
+import org.jetbrains.kotlin.ir.types.IrSimpleType
 import org.jetbrains.kotlin.ir.types.typeWith
 import org.jetbrains.kotlin.ir.util.*
 
@@ -95,7 +96,7 @@ private fun KneeUpwardFunction.makeCodegen(
     // Save
     if (codegen.verbose) spec.addKdoc("knee:reverse-functions")
     val product = CodegenFunction(spec)
-    codegen.prepareContainer(
+    codegen.ensureContainer(
         declaration = implementation,
         importInfo = kind.importInfo,
         detectPropertyAccessors = false, // we don't generate properties at all in the companion object
@@ -132,14 +133,12 @@ private fun KneeUpwardFunction.makeIr(context: KneeContext, signature: UpwardFun
         // copyValueParametersFrom(source, kind.importInfo?.substitutionMap ?: emptyMap())
 
         parameters = source.parameters.map { sourceParam ->
-            // Find the matching parameter and its resolved codec from the signature
-            val codec = signature.regularParameters.find { it.first == sourceParam }?.second
-
-            // Copy the source parameter to the current function, replacing the type with the concrete type (localIrType) resolved by the codec
-            // If not found in the signature (e.g., DispatchReceiver), fall back to the original type
+            val codec = signature.regularParameters.find { it.first == sourceParam.name }?.second
             sourceParam.copyTo(
                 irFunction = this,
-                type = codec?.localIrType ?: sourceParam.type
+                type = codec?.localIrType
+                    ?: kind.importInfo?.substitutor?.substitute(sourceParam.type.simple("makeIr")) as? IrSimpleType
+                    ?: sourceParam.type
             )
         }
 

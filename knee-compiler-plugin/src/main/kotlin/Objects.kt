@@ -32,7 +32,7 @@ fun processObject(klass: KneeObject, context: KneeContext, codegen: KneeCodegen)
 }
 
 private fun KneeObject.makeCodegen(codegen: KneeCodegen) {
-    val container = codegen.prepareContainer(source, importInfo)
+    val container = codegen.ensureContainer(source, importInfo)
     codegenClone = container.addChildIfNeeded(CodegenClass(source.asTypeSpec())).apply {
         if (codegen.verbose) spec.addKdoc("knee:objects")
         spec.addModifiers(source.visibility.asModifier())

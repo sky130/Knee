@@ -59,7 +59,7 @@ fun processClass(klass: KneeClass, context: KneeContext, codegen: KneeCodegen, i
  *    because we already create a KneeFunction for it. Just make sure it gets the right name.
  */
 private fun KneeClass.makeCodegen(codegen: KneeCodegen) {
-    val container = codegen.prepareContainer(source, importInfo)
+    val container = codegen.ensureContainer(source, importInfo)
     codegenClone = container.addChildIfNeeded(CodegenClass(source.asTypeSpec())).apply {
         if (codegen.verbose) spec.addKdoc("knee:classes")
         spec.addModifiers(source.visibility.asModifier())

@@ -50,7 +50,7 @@ fun KneeEnum.makeCodegenClone(codegen: KneeCodegen) {
         }
         CodegenClass(this)
     }
-    codegen.prepareContainer(source, importInfo).addChild(clone)
+    codegen.ensureContainer(source, importInfo).addChild(clone)
     codegenProducts.add(clone)
 }
 

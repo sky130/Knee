@@ -10,7 +10,6 @@ import io.deepmedia.tools.knee.plugin.compiler.utils.asPropertySpec
 import io.deepmedia.tools.knee.plugin.compiler.utils.asTypeSpec
 import io.deepmedia.tools.knee.plugin.compiler.utils.canonicalName
 import org.jetbrains.kotlin.ir.declarations.*
-import org.jetbrains.kotlin.ir.declarations.impl.IrClassImpl
 import org.jetbrains.kotlin.ir.util.*
 import org.jetbrains.kotlin.name.FqName
 import java.io.File
@@ -19,6 +18,7 @@ class KneeCodegen(private val context: KneeContext, val root: File, val verbose:
     companion object {
         const val Filename = "Knee"
     }
+
     init {
         root.deleteRecursively()
         root.mkdirs()
@@ -38,6 +38,27 @@ class KneeCodegen(private val context: KneeContext, val root: File, val verbose:
                 it.type.name.canonicalName == name.asString()
             }
     }
+
+    fun ensureContainer(
+        declaration: IrDeclaration,
+        importInfo: ImportInfo?,
+        detectPropertyAccessors: Boolean = true,
+        createCompanionObject: Boolean = false,
+    ) = runCatching {
+        containerForDeclaration(
+            declaration,
+            importInfo,
+            detectPropertyAccessors,
+            createCompanionObject
+        )
+    }.recover {
+        prepareContainer(
+            declaration,
+            importInfo,
+            detectPropertyAccessors,
+            createCompanionObject
+        )
+    }.getOrThrow()
 
     fun containerForDeclaration(
         declaration: IrDeclaration,
@@ -76,10 +97,11 @@ class KneeCodegen(private val context: KneeContext, val root: File, val verbose:
         detectPropertyAccessors: Boolean = true,
         createCompanionObject: Boolean = false,
     ): CodegenDeclaration<*> {
-        val irHierarchy: MutableList<IrDeclarationParent> = when (val container = declaration.writableParent(context, importInfo)) {
-            is IrDeclaration -> container.parentsWithSelf.toMutableList()
-            else -> mutableListOf(container)
-        }
+        val irHierarchy: MutableList<IrDeclarationParent> =
+            when (val container = declaration.writableParent(context, importInfo)) {
+                is IrDeclaration -> container.parentsWithSelf.toMutableList()
+                else -> mutableListOf(container)
+            }
 
         // irHierarchy is a list which goes from the parent of declaration up until the file
         // [parentOfDeclaration, ... , ... , declarationFile]
@@ -156,7 +178,7 @@ class KneeCodegen(private val context: KneeContext, val root: File, val verbose:
         return !modifiers.contains(KModifier.PRIVATE) && !modifiers.contains(KModifier.INTERNAL)
     }
 
-    private fun <T: Any> CodegenDeclaration<T>.prepare(): T {
+    private fun <T : Any> CodegenDeclaration<T>.prepare(): T {
         val sorted = children.sortedByDescending { it.isProbablyPublic() }
         sorted.forEach {
             when (it) {
@@ -164,19 +186,29 @@ class KneeCodegen(private val context: KneeContext, val root: File, val verbose:
                 is CodegenFunction -> {
                     val funSpec = it.prepare().build()
                     when (this) {
-                        is CodegenFile -> spec.addFunction(funSpec)
+                        is CodegenFile -> {
+                            if (funSpec.isConstructor) {
+                                // spec.members += funSpec
+                            } else {
+                                spec.addFunction(funSpec)
+                            }
+                        }
+
                         is CodegenClass -> when {
                             it.isPrimaryConstructor -> spec.primaryConstructor(funSpec)
                             else -> spec.addFunction(funSpec) // works for regular constructors too
                         }
+
                         is CodegenProperty -> when {
                             it.isGetter -> spec.getter(funSpec)
                             it.isSetter -> spec.setter(funSpec)
                             else -> error("Can't add CodegenFunction to CodegenProperty, name = ${funSpec.name}")
                         }
+
                         is CodegenFunction -> error("Can't add CodegenFunction to CodegenFunction")
                     }
                 }
+
                 is CodegenClass -> {
                     val typeSpec = it.prepare().build()
                     when (this) {
@@ -186,6 +218,7 @@ class KneeCodegen(private val context: KneeContext, val root: File, val verbose:
                         is CodegenFunction -> error("Can't add CodegenType to CodegenFunction")
                     }
                 }
+
                 is CodegenProperty -> {
                     val propertySpec = it.prepare().build()
                     when (this) {

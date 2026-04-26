@@ -51,17 +51,17 @@ private fun KneeDownwardProperty.makeCodegen(codegen: KneeCodegen, symbols: Knee
          is KneeDownwardProperty.Kind.ClassMember -> {
              val isOverride = kind.owner.isOverrideInCodegen(symbols, this)
              val property = makeProperty(isOverride = isOverride)
-             codegen.prepareContainer(source, kind.importInfo).addChild(property)
+             codegen.ensureContainer(source, kind.importInfo).addChild(property)
              codegenImplementation = property
          }
          is KneeDownwardProperty.Kind.ObjectMember -> {
              val property = makeProperty(isOverride = false)
-             codegen.prepareContainer(source, kind.importInfo).addChild(property)
+             codegen.ensureContainer(source, kind.importInfo).addChild(property)
              codegenImplementation = property
          }
          is KneeDownwardProperty.Kind.TopLevel -> {
             val property = makeProperty()
-            codegen.prepareContainer(source, kind.importInfo).addChild(property)
+            codegen.ensureContainer(source, kind.importInfo).addChild(property)
             codegenImplementation = property
          }
     }

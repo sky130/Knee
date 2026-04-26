@@ -134,12 +134,7 @@ fun processInterface(
  *   We use addChildIfNeeded for this.
  */
 private fun KneeInterface.makeCodegenClone(codegen: KneeCodegen) {
-    val container =
-        runCatching {
-            codegen.containerForDeclaration(source, importInfo)
-        }.recover {
-            codegen.prepareContainer(source, importInfo)
-        }.getOrThrow()
+    val container = codegen.ensureContainer(source, importInfo)
     val builder = when {
         source.isFun -> TypeSpec.funInterfaceBuilder(source.name.asString())
         else -> TypeSpec.interfaceBuilder(source.name.asString())
@@ -160,12 +155,7 @@ private fun KneeInterface.makeCodegenClone(codegen: KneeCodegen) {
 private fun KneeInterface.makeCodegenImplementation(codegen: KneeCodegen, context: KneeContext) {
     val name = source.codegenName.asInterfaceName(importInfo).asString()
     val exported1 = !context.useExport2 && source.hasExport1Flag
-    val container =
-        runCatching {
-            codegen.containerForDeclaration(source, importInfo)
-        }.recover {
-            codegen.prepareContainer(source, importInfo)
-        }.getOrThrow()
+    val container = codegen.ensureContainer(source, importInfo)
     val builder = TypeSpec.classBuilder(name).apply {
         when {
             exported1 -> addModifiers(KModifier.PUBLIC)

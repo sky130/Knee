@@ -157,17 +157,17 @@ private fun KneeDownwardFunction.makeCodegen(
     // TODO: use FunctionSignature.JniInfo.owner for at least one of this of these containers
     val localContainer = kind.property?.codegenImplementation ?: when (kind) {
         is Kind.InterfaceMember -> kind.owner.codegenImplementation
-        else -> codegen.prepareContainer(source, kind.importInfo)
+        else -> codegen.ensureContainer(source, kind.importInfo)
     }
     val bridgeContainer = when (kind) { // skip properties in this case
         is Kind.InterfaceMember -> kind.owner.codegenImplementation
-        is Kind.ClassConstructor -> codegen.prepareContainer(
+        is Kind.ClassConstructor -> codegen.ensureContainer(
             source,
             kind.importInfo,
             createCompanionObject = true
         )
 
-        else -> codegen.prepareContainer(source, kind.importInfo, detectPropertyAccessors = false)
+        else -> codegen.ensureContainer(source, kind.importInfo, detectPropertyAccessors = false)
     }
 
     localContainer.addChild(localFun)

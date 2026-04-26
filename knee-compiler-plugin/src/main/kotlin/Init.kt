@@ -387,7 +387,7 @@ private fun KneeCodegen.makeCodegenModule(
     exportedTypes: List<ExportedTypeInfo>
 ) {
     val name = module.source.name.asString()
-    val container = prepareContainer(module.source, null)
+    val container = ensureContainer(module.source, null)
     val moduleClass: ClassName =
         context.symbols.klass(RuntimeIds.KneeModule).owner.defaultType.asTypeName() as ClassName
     val adapterClass: ClassName = moduleClass.nestedClass("Adapter")

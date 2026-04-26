@@ -15,6 +15,8 @@ import org.jetbrains.kotlin.ir.util.file
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.ir.IrBuiltIns
 import org.jetbrains.kotlin.ir.declarations.IrParameterKind
+import org.jetbrains.kotlin.name.CallableId
+import org.jetbrains.kotlin.name.FqName
 
 class KneeLogger(
     private val kneeContext: KneeContext,
@@ -43,7 +45,13 @@ class KneeLogger(
         if (printlnIrString == null) {
             val builtIns = kneeContext.plugin.irBuiltIns
             val symbolFinder = builtIns.symbolFinder
-            val function = symbolFinder.findFunctions(Name.identifier("println"), "kotlin", "io")
+
+            val function = symbolFinder.findFunctions(
+                CallableId(
+                    FqName.fromSegments(listOf("kotlin", "io")),
+                    Name.identifier("println")
+                )
+            )
             printlnIrString = function.single {
                 it.owner.parameters
                     .firstOrNull { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
@@ -65,7 +73,13 @@ class KneeLogger(
         if (printlnIrAny == null) {
             val builtIns = kneeContext.plugin.irBuiltIns
             val symbolFinder = builtIns.symbolFinder
-            val function = symbolFinder.findFunctions(Name.identifier("println"), "kotlin", "io")
+
+            val function = symbolFinder.findFunctions(
+                CallableId(
+                    FqName.fromSegments(listOf("kotlin", "io")),
+                    Name.identifier("println")
+                )
+            )
             printlnIrAny = function.single {
                 it.owner.parameters
                     .firstOrNull { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
