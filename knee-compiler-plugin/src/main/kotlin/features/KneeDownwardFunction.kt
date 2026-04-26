@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.ir.declarations.IrClass
 import org.jetbrains.kotlin.ir.declarations.IrConstructor
 import org.jetbrains.kotlin.ir.declarations.IrFunction
+import org.jetbrains.kotlin.ir.declarations.IrSimpleFunction
 import org.jetbrains.kotlin.ir.util.*
 
 class KneeDownwardFunction(
@@ -59,4 +60,8 @@ class KneeDownwardFunction(
     init {
         source.requireNotComplex(this, allowSuspend = true)
     }
+
+    // Imported interface members are invoked through a local trampoline to avoid
+    // calling external suspend interface symbols directly from generated bridge IR.
+    var importedAdapter: IrSimpleFunction? = null
 }

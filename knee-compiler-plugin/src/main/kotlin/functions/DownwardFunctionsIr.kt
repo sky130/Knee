@@ -21,24 +21,51 @@ object DownwardFunctionsIr {
     fun IrStatementsBuilder<*>.irInvoke(
         inputs: List<IrValueParameter>,
         local: IrFunction,
+        target: IrFunction,
         signature: DownwardFunctionSignature,
         codecContext: IrCodecContext,
     ): IrExpression {
         val logPrefix = "FunctionsIr.irInvoke(${local.fqNameWhenAvailable})"
         codecContext.logger.injectLog(this, "$logPrefix START")
+        val targetRegularParameters = target.parameters
+            .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+        val targetHasDispatchReceiver = target.parameters.any { it.kind == IrParameterKind.DispatchReceiver }
+        val targetRegularBaseIndex = when {
+            targetHasDispatchReceiver -> 0
+            signature.extraParameters.any { it.first == DownwardFunctionSignature.Extra.ReceiverInstance } -> 1
+            else -> 0
+        }
 
-        return irCall(local).apply {
+        return irCall(target).apply {
             val hasReceiver = signature.extraParameters.firstOrNull { it.first == DownwardFunctionSignature.Extra.ReceiverInstance }
             hasReceiver?.let { (name, codec) ->
                 val param = inputs.first { it.name == name }
                 codecContext.logger.injectLog(this@irInvoke, "$logPrefix Decoding dispatch receiver $name with $codec")
-                dispatchReceiver = with(codec) { irDecode(codecContext, param) }
+                val decoded = with(codec) { irDecode(codecContext, param) }
+                when {
+                    targetHasDispatchReceiver -> {
+                        dispatchReceiver = decoded
+                    }
+                    else -> {
+                        val targetIndex = targetRegularParameters
+                            .indexOfFirst { it.name == name }
+                            .takeIf { it >= 0 }
+                            ?: 0
+                        arguments[targetIndex] = decoded
+                    }
+                }
             }
             signature.regularParameters.forEachIndexed { index, (param, codec) ->
                 with(codec) {
                     // note: targetIndex != index because of copy parameters!
                     val inputIndex = index + signature.knPrefixParameters.size + signature.extraParameters.size
-                    val targetIndex = local.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }.indexOfFirst { it.name == param }
+                    val targetIndex = targetRegularParameters
+                        .indexOfFirst { it.name == param }
+                        .takeIf { it >= 0 }
+                        ?: (targetRegularBaseIndex + index)
+                    require(targetIndex in targetRegularParameters.indices) {
+                        "Could not map parameter '$param' from ${local.fqNameWhenAvailable} to ${target.fqNameWhenAvailable}."
+                    }
                     codecContext.logger.injectLog(this@irInvoke, "$logPrefix Decoding parameter $param with $codec")
                     arguments[targetIndex] = irDecode(codecContext, inputs[inputIndex])
                 }

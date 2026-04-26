@@ -114,7 +114,7 @@ fun processInterface(
         interface_.irGetMethod = { signature ->
             irCall(methodFromSignature).apply {
                 dispatchReceiver = irThis()
-                arguments[0] = irString(
+                arguments[methodFromSignature.parameters.indexOfFirst { it.name.asString() == "key" }] = irString(
                     signature.jniInfo.name(false).asString() + "::" + signature.jniInfo.signature
                 )
             }

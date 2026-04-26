@@ -9,6 +9,7 @@ import io.deepmedia.tools.knee.plugin.compiler.features.KneeDownwardFunction.Kin
 import io.deepmedia.tools.knee.plugin.compiler.functions.DownwardFunctionSignature
 import io.deepmedia.tools.knee.plugin.compiler.functions.DownwardFunctionsCodegen
 import io.deepmedia.tools.knee.plugin.compiler.functions.DownwardFunctionsIr
+import io.deepmedia.tools.knee.plugin.compiler.functions.ensureImportedAdapter
 import io.deepmedia.tools.knee.plugin.compiler.codec.CodegenCodecContext
 import io.deepmedia.tools.knee.plugin.compiler.codec.IrCodecContext
 import io.deepmedia.tools.knee.plugin.compiler.context.KneeLogger
@@ -37,6 +38,7 @@ fun processDownwardFunction(
     initInfo: InitInfo
 ) {
     val signature = DownwardFunctionSignature(function.source, function.kind, context)
+    function.ensureImportedAdapter(context, signature)
     function.makeIr(context, signature, initInfo)
     function.makeCodegen(codegen, signature, context.log)
 }
@@ -275,6 +277,7 @@ private fun KneeDownwardFunction.makeIr(
                 +irReturn(
                     if (!signature.isSuspend) {
                         with(DownwardFunctionsIr) {
+                            val target = importedAdapter ?: source
                             // val raw = irInvoke(lambda.valueParameters, source, signature, codecContext)
                             // irReceive(raw, signature, codecContext)
                             val catch = buildVariable(
@@ -292,6 +295,7 @@ private fun KneeDownwardFunction.makeIr(
                                     val raw = irInvoke(
                                         lambda.parameters.filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context },
                                         source,
+                                        target,
                                         signature,
                                         codecContext
                                     )
@@ -373,6 +377,7 @@ private fun KneeDownwardFunction.makeIr(
                                             lambda.parameters
                                                 .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context },
                                             source,
+                                            importedAdapter ?: source,
                                             signature,
                                             codecContext
                                         )

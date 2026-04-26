@@ -64,14 +64,16 @@ object UpwardFunctionsIr {
         return irCall(
             symbols.functions(function).single()
         ).apply {
-            symbol.owner.parameters
-                .indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
-                .also {
-                    arguments[it] = irGet(codecContext.environment)
-                }
-            arguments[0] = irGet(jmethodOwner)
-            arguments[1] = irGet(jmethod)
-            arguments[2] = irVararg(
+            val extensionIndex = symbol.owner.parameters.indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
+            val ownerIndex = symbol.owner.parameters.indexOfFirst { it.name.asString() == "jclass" }
+                .takeIf { it >= 0 }
+                ?: symbol.owner.parameters.indexOfFirst { it.name.asString() == "jobjectOrJClass" }
+            val methodIndex = symbol.owner.parameters.indexOfFirst { it.name.asString() == "method" }
+            val argsIndex = symbol.owner.parameters.indexOfFirst { it.name.asString() == "args" }
+            arguments[extensionIndex] = irGet(codecContext.environment)
+            arguments[ownerIndex] = irGet(jmethodOwner)
+            arguments[methodIndex] = irGet(jmethod)
+            arguments[argsIndex] = irVararg(
                 elementType = symbols.builtIns.anyType.makeNullable(),
                 values = prefixInputs + mappedInputs
             )

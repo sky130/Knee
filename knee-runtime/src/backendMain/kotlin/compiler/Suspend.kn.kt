@@ -171,19 +171,14 @@ private class KneeSuspendInvocation<Jni, Local>(
 @Suppress("unused")
 internal suspend fun <Encoded, Decoded> kneeInvokeKnSuspend(
     virtualMachine: JavaVirtualMachine,
-    block: (JniEnvironment, Long) -> jobject,
+    block: (Long) -> jobject?,
     decoder: (JniEnvironment, Encoded) -> Decoded
 ): Decoded {
     return suspendCancellableCoroutine { cont ->
         // invoker must decode otherwise we might end up releasing the environment with useEnv before decode
         val invoker = KneeSuspendInvoker(virtualMachine, cont, decoder)
-        val invocation: jobject? = virtualMachine.useEnv { env ->
-            val weak = block(env, invoker.address)
-            if (invoker.completed) null else {
-                // TODO: review this usage of deleteLocalRef, not clear it's needed. See other usages
-                env.newGlobalRef(weak).also { env.deleteLocalRef(weak) }
-            }
-        }
+        // The block is responsible for returning a stable global ref to the JVM invocation object.
+        val invocation: jobject? = block(invoker.address)
         if (invocation != null) {
             cont.invokeOnCancellation {
                 invoker.sendCancellation(invocation)
@@ -198,6 +193,12 @@ internal suspend fun <Encoded, Decoded> kneeInvokeKnSuspend(
             }
         }
     }
+}
+
+@PublishedApi
+@Suppress("unused")
+internal fun kneeGlobalize(environment: JniEnvironment, reference: jobject): jobject {
+    return environment.newGlobalRef(reference).also { environment.deleteLocalRef(reference) }
 }
 
 @PublishedApi
@@ -230,4 +231,3 @@ internal class KneeSuspendInvoker<Encoded, Decoded>(
         jvm.useEnv { env -> env.callVoidMethod(invocation, cancelInvocationMethod) }
     }
 }
-

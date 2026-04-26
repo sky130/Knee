@@ -17,16 +17,9 @@ internal open class JvmInterfaceWrapper<T: Any>(
     // accessed by IR
     val virtualMachine = environment.javaVM
 
-    // needed to return the wrapped object to JVM
-    // TODO: the deleteLocalRef below creates the warning: Attempt to remove non-JNI local reference
-    //  When we, for example, pass a jobject to native and create an interface out of it. Concretely we are calling
-    //  deleteLocalRef on the jobject from within the method, which is not needed.
-    //  Same for almost all other usages of deleteLocalRef we do: it should be called by who creates
-    //  We need to pass more information to codecs, to understand whether the resource should be released or not
-    //  or maybe no resource needs to be released at all
-    val jvmInterfaceObject = environment.newGlobalRef(wrapped).also {
-        environment.deleteLocalRef(wrapped)
-    }
+    // Keep a global ref for cross-boundary callbacks. Do not delete `wrapped` here:
+    // the wrapper does not own the incoming JNI reference and it might already be global.
+    val jvmInterfaceObject = environment.newGlobalRef(wrapped)
 
     private val jvmInterfaceCleaner = createCleaner(this.virtualMachine to this.jvmInterfaceObject) { (virtualMachine, it) ->
         // looking at K/N code, looks like cleaner blocks are invoked on a special cleaner worker that should be long-lived,
@@ -50,6 +43,10 @@ internal open class JvmInterfaceWrapper<T: Any>(
         toString = MethodIds.get(environment, interfaceFqn, "toString", "()Ljava/lang/String;", false, jclass)
     }
 
+    // needed to call methods using env.callStatic***Method()
+    // accessed from IR
+    val methodOwnerClass = ClassIds.get(environment, methodOwnerFqn)
+
     private val methodIds: Map<String, jmethodID> = run {
         val count = methodsAndSignatures.size / 2
         (0 until count).associate {
@@ -58,10 +55,6 @@ internal open class JvmInterfaceWrapper<T: Any>(
             "$name::$signature" to MethodIds.get(environment, methodOwnerFqn, name, signature, static = true, methodOwnerClass)
         }
     }
-
-    // needed to call methods using env.callStatic***Method()
-    // accessed from IR
-    val methodOwnerClass = ClassIds.get(environment, methodOwnerFqn)
 
     // key is name::signature
     fun method(key: String): jmethodID {

@@ -13,6 +13,7 @@ import io.deepmedia.tools.knee.plugin.compiler.context.KneeLogger
 import io.deepmedia.tools.knee.plugin.compiler.utils.*
 import io.deepmedia.tools.knee.plugin.compiler.symbols.CInteropIds
 import io.deepmedia.tools.knee.plugin.compiler.symbols.PlatformIds
+import io.deepmedia.tools.knee.plugin.compiler.symbols.RuntimeIds.kneeGlobalize
 import io.deepmedia.tools.knee.plugin.compiler.symbols.RuntimeIds.kneeInvokeKnSuspend
 import io.deepmedia.tools.knee.plugin.compiler.symbols.RuntimeIds.useEnv
 import org.jetbrains.kotlin.backend.common.lower.DeclarationIrBuilder
@@ -149,6 +150,7 @@ private fun KneeUpwardFunction.makeIr(context: KneeContext, signature: UpwardFun
         val logPrefix = "ReverseFunctions.kt(${source.fqNameWhenAvailable})"
         body = DeclarationIrBuilder(context.plugin, symbol, SYNTHETIC_OFFSET, SYNTHETIC_OFFSET).irBlockBody {
             context.log.injectLog(this, "$logPrefix INVOKED, retrieving jvm info")
+            val virtualMachine = irTemporary(kind.parent.irGetVirtualMachine(this))
             val jvmMethodOwner = irTemporary(kind.parent.irGetMethodOwner(this))
             val jvmMethod = irTemporary(kind.parent.irGetMethod(this, signature))
             val jvmObject = irTemporary(kind.parent.irGetJvmObject(this))
@@ -157,13 +159,11 @@ private fun KneeUpwardFunction.makeIr(context: KneeContext, signature: UpwardFun
                 +irReturn(irCall(
                     callee = context.symbols.functions(useEnv).single()
                 ).apply {
-                    symbol.owner.parameters
-                        .indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
-                        .also {
-                            arguments[it] = kind.parent.irGetVirtualMachine(this@irBlockBody)
-                        }
+                    val extensionIndex = symbol.owner.parameters.indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
+                    val blockIndex = symbol.owner.parameters.indexOfFirst { it.name.asString() == "block" }
+                    arguments[extensionIndex] = irGet(virtualMachine)
                     typeArguments[0] = signature.result.localIrType
-                    arguments[0] = irLambda(
+                    arguments[blockIndex] = irLambda(
                         context = context,
                         parent = parent,
                         content = { lambda ->
@@ -185,18 +185,31 @@ private fun KneeUpwardFunction.makeIr(context: KneeContext, signature: UpwardFun
                 +irReturn(irCall(context.symbols.functions(kneeInvokeKnSuspend).single()).apply {
                     typeArguments[0] = signature.result.encodedType.knOrNull ?: context.symbols.builtIns.unitType
                     typeArguments[1] = signature.result.localIrType
-                    arguments[0] = kind.parent.irGetVirtualMachine(this@irBlockBody)
+                    arguments[0] = irGet(virtualMachine)
                     arguments[1] = irLambda(context, parent) { lambda ->
-                        val env = lambda.addValueParameter("_env", envType)
                         val invoker = lambda.addValueParameter("_invoker", context.symbols.builtIns.longType)
                         lambda.returnType = signature.suspendResult.localIrType
-                        with(UpwardFunctionsIr) {
-                            val codecContext = IrCodecContext(source.symbol, env, true, context.log)
-                            context.log.injectLog(this@irBlockBody, "$logPrefix preparing the JVM call")
-                            val raw = irInvoke(context.symbols, args, signature, codecContext, jvmObject, jvmMethodOwner, jvmMethod, signature.suspendResult.encodedType, invoker)
-                            context.log.injectLog(this@irBlockBody, "$logPrefix received the invocation token")
-                            +irReturn(irReceive(raw, signature, codecContext, suspendToken = true))
-                        }
+                        +irReturn(irCall(context.symbols.functions(useEnv).single()).apply {
+                            val extensionIndex = symbol.owner.parameters.indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
+                            val blockIndex = symbol.owner.parameters.indexOfFirst { it.name.asString() == "block" }
+                            arguments[extensionIndex] = irGet(virtualMachine)
+                            typeArguments[0] = signature.suspendResult.localIrType
+                            arguments[blockIndex] = irLambda(context, parent) { envLambda ->
+                                envLambda.returnType = signature.suspendResult.localIrType
+                                val env = envLambda.addValueParameter("_env", envType)
+                                with(UpwardFunctionsIr) {
+                                    val codecContext = IrCodecContext(source.symbol, env, true, context.log)
+                                    context.log.injectLog(this@irBlockBody, "$logPrefix preparing the JVM call")
+                                    val raw = irInvoke(context.symbols, args, signature, codecContext, jvmObject, jvmMethodOwner, jvmMethod, signature.suspendResult.encodedType, invoker)
+                                    val invocation = irReceive(raw, signature, codecContext, suspendToken = true)
+                                    context.log.injectLog(this@irBlockBody, "$logPrefix received the invocation token")
+                                    +irReturn(irCall(context.symbols.functions(kneeGlobalize).single()).apply {
+                                        arguments[0] = irGet(env)
+                                        arguments[1] = invocation
+                                    })
+                                }
+                            }
+                        })
                     }
                     arguments[2] = irLambda(context, parent) { lambda ->
                         val env = lambda.addValueParameter("_env", envType)
