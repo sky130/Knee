@@ -310,10 +310,12 @@ private fun KneeDownwardFunction.makeIr(
                                                 context.symbols.functions(rethrowNativeException)
                                                     .single()
                                             ).apply {
-                                                symbol.owner.parameters
+                                                val extensionIndex = symbol.owner.parameters
                                                     .indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
-                                                    .also { arguments[it] = irGet(environment) }
-                                                arguments[0] = irGet(catch)
+                                                val throwableIndex = symbol.owner.parameters
+                                                    .indexOfFirst { it.name.asString() == "throwable" }
+                                                arguments[extensionIndex] = irGet(environment)
+                                                arguments[throwableIndex] = irGet(catch)
                                             }
                                             // Return 'something' here otherwise compilation fails (I think).
                                             // It will never be used anyway because the JVM will throw due to previous command.

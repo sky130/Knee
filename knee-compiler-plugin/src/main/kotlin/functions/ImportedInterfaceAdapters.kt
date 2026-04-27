@@ -46,6 +46,8 @@ internal fun KneeDownwardFunction.ensureImportedAdapter(
         .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
     val targetRegularParams = target.parameters
         .filter { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+    val targetRegularParamSlots = target.parameters.withIndex()
+        .filter { it.value.kind == IrParameterKind.Regular || it.value.kind == IrParameterKind.Context }
 
     return context.factory.buildFun {
         startOffset = SYNTHETIC_OFFSET
@@ -88,7 +90,7 @@ internal fun KneeDownwardFunction.ensureImportedAdapter(
             } else {
                 call.dispatchReceiver = irGet(receiver)
                 targetRegularParams.forEachIndexed { index, _ ->
-                    call.arguments[index] = irGet(params[index])
+                    call.arguments[targetRegularParamSlots[index].index] = irGet(params[index])
                 }
             }
             +irReturn(call)
