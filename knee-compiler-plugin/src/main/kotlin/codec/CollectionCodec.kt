@@ -167,10 +167,12 @@ class CollectionCodec(
         val decode = runtimeHelperClass.functions.single { it.name.asString() == "decodeInto${collectionKind.name}" }
         return irCall(decode).apply {
             dispatchReceiver = irGet(codec)
-            symbol.owner.parameters
+            val extensionIndex = symbol.owner.parameters
                 .indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
-                .also { arguments[it] = irGet(irContext.environment) }
-            arguments[0] = irGet(jni)
+            val arrayIndex = symbol.owner.parameters
+                .indexOfFirst { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+            arguments[extensionIndex] = irGet(irContext.environment)
+            arguments[arrayIndex] = irGet(jni)
         }
     }
 
@@ -180,10 +182,12 @@ class CollectionCodec(
         val encode = runtimeHelperClass.functions.single { it.name.asString() == "encode${collectionKind.name}" }
         return irCall(encode).apply {
             dispatchReceiver = irGet(codec)
-            symbol.owner.parameters
+            val extensionIndex = symbol.owner.parameters
                 .indexOfFirst { it.kind == IrParameterKind.ExtensionReceiver }
-                .also { arguments[it] = irGet(irContext.environment) }
-            arguments[0] = irGet(local)
+            val collectionIndex = symbol.owner.parameters
+                .indexOfFirst { it.kind == IrParameterKind.Regular || it.kind == IrParameterKind.Context }
+            arguments[extensionIndex] = irGet(irContext.environment)
+            arguments[collectionIndex] = irGet(local)
         }
     }
 
